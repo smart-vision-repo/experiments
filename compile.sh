@@ -266,12 +266,12 @@ main() {
     check_gpu || log_warning "GPU check indicated issues or no GPU found. CUDA-dependent parts may fail at runtime."
     
 
-    if ! compile "object_detector" "object_detector.cpp"; then
+    if ! compile "app_object_detector" "object_detector.cpp"; then
         exit 1
     fi
 
     log_success "===== Build Script Finished Successfully ====="
-    log_info "To run: ./object_detector <video_path> <interval>"
+    log_info "To run: ./app_object_detector <video_path> <interval>"
 }
 
 # Run main

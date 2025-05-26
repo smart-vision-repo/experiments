@@ -83,6 +83,7 @@ docs/latex/
 *.webp
 *.svg
 *.ico
+app_*
 
 # 视频文件
 *.mp4
