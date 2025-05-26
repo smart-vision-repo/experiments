@@ -1,1 +1,3 @@
-(object_detector_3090.cpp)[object_detector_3090.cpp]: 成功地利用gpu在3090上进行硬解码
+[object_detector_3090.cpp](object_detector_3090.cpp): 成功地利用gpu在3090上进行硬解码
+[object_detector_image.cpp](object_detector_image.cpp): 可以保存图片到本地
+[compile.sh](compile.sh): 编译脚本
