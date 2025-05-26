@@ -1,4 +1,4 @@
-#define SAVE_IMAGE_COUNT 10
+#define SAVE_IMAGE_COUNT 0
 #include <iostream>
 #include <string>
 #include <vector>
@@ -151,7 +151,7 @@ int initializeHardwareDecoder(AVCodecContext* codecContext, AVBufferRef** hwDevi
 
         // Attempt to create the hardware device context.
         // av_hwdevice_ctx_create will allocate and fill *hwDeviceCtx.
-        int ret = av_hwdevice_ctx_create(hwDeviceCtx, type, 0, nullptr, 0);
+        int ret = av_hwdevice_ctx_create(hwDeviceCtx, type, nullptr, nullptr, 0);
         if (ret >= 0) {
             // Successfully created a hardware device context.
             // Now, assign a reference to this context to the codec context.
