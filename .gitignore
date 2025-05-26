@@ -1,4 +1,4 @@
-# 编译生成的文件
+# ----- C++ 编译生成的文件 -----
 *.o
 *.a
 *.so
@@ -9,7 +9,7 @@
 *.out
 *.app
 
-# 调试文件
+# ----- 调试文件 -----
 *.dSYM/
 *.su
 *.idb
@@ -17,15 +17,15 @@
 *.ilk
 *.exp
 
-# 预编译头文件
+# ----- 预编译头文件 -----
 *.gch
 *.pch
 
-# 日志和临时文件
+# ----- 日志和临时文件 -----
 *.log
 *.tmp
 
-# 构建目录
+# ----- 构建目录 -----
 build/
 bin/
 obj/
@@ -34,7 +34,7 @@ Release/
 x64/
 x86/
 
-# IDE相关文件
+# ----- IDE相关文件 -----
 .vscode/
 .idea/
 *.sln
@@ -45,7 +45,7 @@ x86/
 *.depend
 *.layout
 
-# CMake生成的文件
+# ----- CMake生成的文件 -----
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
@@ -53,21 +53,44 @@ Makefile
 install_manifest.txt
 *.cmake
 
-# 自动生成的文件
+# ----- 自动生成的文件 -----
 *.swp
 *~
 *.bak
 
-# 依赖目录
+# ----- 依赖目录 -----
 deps/
 third_party/
 
-# 测试相关
+# ----- 测试相关 -----
 *.test
 *.gcda
 *.gcno
 *.gcov
 
-# 文档生成
+# ----- 文档生成 -----
 docs/html/
 docs/latex/
+
+# ===== 新增：视频和图片文件 =====
+# 图片文件
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp
+*.svg
+*.ico
+
+# 视频文件
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.webm
+*.wmv
+*.mpg
+*.mpeg
