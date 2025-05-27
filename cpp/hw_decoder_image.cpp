@@ -387,7 +387,6 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
         avcodec_free_context(&ctx);
     }
     if (fmtCtx) avformat_close_input(&fmtCtx);
-    std::cout << "Processing finished. Total images saved to disk: " << finalImagesToSave.size() << std::endl;
     std::cout << "Hardware decoded frames: " << hwDecodedFrames << std::endl;
     std::cout << "Software decoded frames: " << swDecodedFrames << std::endl;
 }
