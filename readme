@@ -1,3 +1,8 @@
-[object_detector_3090.cpp](object_detector_3090.cpp): 成功地利用gpu在3090上进行硬解码
-[object_detector_image.cpp](object_detector_image.cpp): 可以保存图片到本地
-[compile.sh](compile.sh): 编译脚本
+
+## 解码
+* A100无相关解码硬件, 3090可以使用硬件解码
+* [hw_decoder_3090.cpp](cpp/hw_decoder_3090.cpp): 成功地利用gpu在3090上进行硬解码
+* [hw_decoder_image.cpp](cpp/hw_decoder_image.cpp): 可以保存图片到本地
+
+## 编译脚本
+* [compile.sh](cpp/compile.sh): c++编译脚本
