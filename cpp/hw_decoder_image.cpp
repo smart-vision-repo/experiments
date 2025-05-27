@@ -1,4 +1,3 @@
-#define SAVE_IMAGE_COUNT 10
 #include <iostream>
 #include <string>
 #include <vector>
@@ -42,14 +41,14 @@ struct GOPSamplingInfo {
     long long next_carry_over = 0;
 };
 
-void createOutputDirectory(const std::string& outputDir) {
+void createOutputDirectory(const std::string &outputDir) {
     if (!fs::exists(outputDir)) {
         fs::create_directories(outputDir);
         std::cout << "Created output directory: " << outputDir << std::endl;
     }
 }
 
-std::string generateTimestampFilename(const std::string& prefix, int gopIndex, int frameIndexInGop, const std::string& extension) {
+std::string generateTimestampFilename(const std::string &prefix, int gopIndex, int frameIndexInGop, const std::string &extension) {
     auto now = std::chrono::system_clock::now();
     auto now_c = std::chrono::system_clock::to_time_t(now);
     std::tm now_tm = *std::localtime(&now_c);
@@ -66,7 +65,7 @@ AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat 
         std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
         return AV_PIX_FMT_NONE;
     }
-    AVHWDeviceContext *hw_device_ctx_data = (AVHWDeviceContext*)ctx->hw_device_ctx->data;
+    AVHWDeviceContext *hw_device_ctx_data = (AVHWDeviceContext *)ctx->hw_device_ctx->data;
     const enum AVHWDeviceType active_device_type = hw_device_ctx_data->type;
     std::cout << "getHWFormatCallback: Active HW device type is '"
               << av_hwdevice_get_type_name(active_device_type)
@@ -76,16 +75,28 @@ AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat 
         std::cout << "  - Considering format: " << av_get_pix_fmt_name(*p_fmt) << std::endl;
         bool format_is_compatible = false;
         switch (active_device_type) {
-            case AV_HWDEVICE_TYPE_CUDA: if (*p_fmt == AV_PIX_FMT_CUDA) format_is_compatible = true; break;
-            case AV_HWDEVICE_TYPE_VAAPI: if (*p_fmt == AV_PIX_FMT_VAAPI) format_is_compatible = true; break;
-            case AV_HWDEVICE_TYPE_VDPAU: if (*p_fmt == AV_PIX_FMT_VDPAU) format_is_compatible = true; break;
-            case AV_HWDEVICE_TYPE_QSV: if (*p_fmt == AV_PIX_FMT_QSV) format_is_compatible = true; break;
-            case AV_HWDEVICE_TYPE_D3D11VA: if (*p_fmt == AV_PIX_FMT_D3D11) format_is_compatible = true; break;
-            case AV_HWDEVICE_TYPE_VIDEOTOOLBOX: if (*p_fmt == AV_PIX_FMT_VIDEOTOOLBOX) format_is_compatible = true; break;
-            default:
-                std::cerr << "getHWFormatCallback: Unhandled or unknown active_device_type: "
-                          << av_hwdevice_get_type_name(active_device_type) << std::endl;
-                break;
+        case AV_HWDEVICE_TYPE_CUDA:
+            if (*p_fmt == AV_PIX_FMT_CUDA) format_is_compatible = true;
+            break;
+        case AV_HWDEVICE_TYPE_VAAPI:
+            if (*p_fmt == AV_PIX_FMT_VAAPI) format_is_compatible = true;
+            break;
+        case AV_HWDEVICE_TYPE_VDPAU:
+            if (*p_fmt == AV_PIX_FMT_VDPAU) format_is_compatible = true;
+            break;
+        case AV_HWDEVICE_TYPE_QSV:
+            if (*p_fmt == AV_PIX_FMT_QSV) format_is_compatible = true;
+            break;
+        case AV_HWDEVICE_TYPE_D3D11VA:
+            if (*p_fmt == AV_PIX_FMT_D3D11) format_is_compatible = true;
+            break;
+        case AV_HWDEVICE_TYPE_VIDEOTOOLBOX:
+            if (*p_fmt == AV_PIX_FMT_VIDEOTOOLBOX) format_is_compatible = true;
+            break;
+        default:
+            std::cerr << "getHWFormatCallback: Unhandled or unknown active_device_type: "
+                      << av_hwdevice_get_type_name(active_device_type) << std::endl;
+            break;
         }
         if (format_is_compatible) {
             std::cout << "Hardware pixel format selected: " << av_get_pix_fmt_name(*p_fmt)
@@ -103,12 +114,12 @@ AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat 
     return AV_PIX_FMT_NONE;
 }
 
-int initializeHardwareDecoder(AVCodecContext* codecContext, AVBufferRef** hwDeviceCtx) {
+int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx) {
     if (*hwDeviceCtx != nullptr) {
         av_buffer_unref(hwDeviceCtx);
         *hwDeviceCtx = nullptr;
     }
-    const char* hwAccel[] = {"cuda", "vaapi", "vdpau", "qsv", "d3d11va", "videotoolbox", nullptr};
+    const char *hwAccel[] = {"cuda", "vaapi", "vdpau", "qsv", "d3d11va", "videotoolbox", nullptr};
     for (int i = 0; hwAccel[i]; i++) {
         enum AVHWDeviceType type = av_hwdevice_find_type_by_name(hwAccel[i]);
         if (type == AV_HWDEVICE_TYPE_NONE) continue;
@@ -136,13 +147,13 @@ GOPSamplingInfo calculate_sample_indices_for_gop(int gop_idx, int b_val, long lo
     result.gopIndex = gop_idx;
     result.framesInGop = b_val;
     long long pool = initial_carry + b_val;
-    int c_val = (interval>0) ? pool/interval : 0;
+    int c_val = (interval > 0) ? pool / interval : 0;
     int d_val = 0;
-    if (c_val>0) {
+    if (c_val > 0) {
         long long first = interval - initial_carry;
-        if (first<=0) first=1;
+        if (first <= 0) first = 1;
         if (b_val >= first) {
-            d_val = first + (long long)((c_val-1)>0?(c_val-1):0)*interval;
+            d_val = first + (long long)((c_val - 1) > 0 ? (c_val - 1) : 0) * interval;
             if (d_val > b_val) {
                 if (b_val < first) {
                     d_val = 0;
@@ -161,24 +172,23 @@ GOPSamplingInfo calculate_sample_indices_for_gop(int gop_idx, int b_val, long lo
     } else {
         result.samplesToTake = 0;
     }
-    for (int i=0; i<result.samplesToTake; i++) {
-        result.frameIndicesToDecode.push_back((interval-initial_carry) + i*interval);
+    for (int i = 0; i < result.samplesToTake; i++) {
+        result.frameIndicesToDecode.push_back((interval - initial_carry) + i * interval);
     }
-    result.remainingFramesAfterD = (d_val>0)? (b_val-d_val):b_val;
-    result.next_carry_over = is_last_gop?0:(pool%interval);
+    result.remainingFramesAfterD = (d_val > 0) ? (b_val - d_val) : b_val;
+    result.next_carry_over = is_last_gop ? 0 : (pool % interval);
     if (pool < interval && !is_last_gop) {
         result.next_carry_over = pool;
     }
     return result;
 }
 
-int totalFrames = 0;
 int hwDecodedFrames = 0;
 int swDecodedFrames = 0;
 
-void processAndDecodeVideo(const std::string& videoFile, int interval, const std::string& outputDir) {
+void processAndDecodeVideo(const std::string &videoFile, int interval, const std::string &outputDir) {
     createOutputDirectory(outputDir);
-    AVFormatContext* fmtCtx = nullptr;
+    AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, videoFile.c_str(), nullptr, nullptr) != 0) {
         std::cerr << "Error: Could not open video file " << videoFile << std::endl;
         return;
@@ -190,8 +200,8 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
     }
 
     int vidIdx = -1;
-    AVCodec* codec = nullptr;
-    AVCodecContext* ctx = nullptr;
+    AVCodec *codec = nullptr;
+    AVCodecContext *ctx = nullptr;
     for (unsigned i = 0; i < fmtCtx->nb_streams; i++) {
         if (fmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             vidIdx = i;
@@ -224,7 +234,7 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
     }
 
     ctx->thread_count = std::max(1u, std::thread::hardware_concurrency() / 2);
-    AVBufferRef* hwCtxRef = nullptr;
+    AVBufferRef *hwCtxRef = nullptr;
     bool useHW = initializeHardwareDecoder(ctx, &hwCtxRef);
 
     if (avcodec_open2(ctx, codec, nullptr) < 0) {
@@ -235,8 +245,8 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
         return;
     }
 
-    AVFrame* frame = av_frame_alloc();
-    AVFrame* swFrame = nullptr;
+    AVFrame *frame = av_frame_alloc();
+    AVFrame *swFrame = nullptr;
     if (useHW) {
         swFrame = av_frame_alloc();
         if (!swFrame) {
@@ -249,9 +259,9 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
             return;
         }
     }
-    
-    struct SwsContext* swsCtx = nullptr;
-    AVPacket* packet = av_packet_alloc();
+
+    struct SwsContext *swsCtx = nullptr;
+    AVPacket *packet = av_packet_alloc();
     if (!frame || !packet) {
         std::cerr << "Error: Could not allocate frame or packet." << std::endl;
         av_frame_free(&frame);
@@ -264,25 +274,28 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
         return;
     }
 
-    int gopIdx=0;
-    long long carry=0;
-    std::vector<AVPacket*> gopBuf;
-    std::vector<std::tuple<int, int, cv::Mat>> allDecodedImages;
-    auto decode_and_save = [&](const GOPSamplingInfo& info) {
+    int gopIdx = 0;
+    long long carry = 0;
+    std::vector<AVPacket *> gopBuf;
+    // Lambda function to decode and save images from GOP
+    auto gop_pkg_decoder = [&](const GOPSamplingInfo &info) {
         std::vector<int> selectedFramesIndices = info.frameIndicesToDecode;
         for (int pkt_idx = 0; pkt_idx < (int)gopBuf.size(); ++pkt_idx) {
-            AVPacket* current_pkt = gopBuf[pkt_idx];
+            AVPacket *current_pkt = gopBuf[pkt_idx];
             int frame_ordinal_in_gop = pkt_idx + 1;
             if (avcodec_send_packet(ctx, current_pkt) < 0) continue;
 
             while (true) {
                 int ret = avcodec_receive_frame(ctx, frame);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-                else if (ret < 0) break;
-                AVFrame* frameToProcess = frame;
-                ++totalFrames;
-                if (useHW && frame->format == ctx->pix_fmt) ++hwDecodedFrames;
-                else ++swDecodedFrames;
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                    break;
+                else if (ret < 0)
+                    break;
+                AVFrame *frameToProcess = frame;
+                if (useHW && frame->format == ctx->pix_fmt)
+                    ++hwDecodedFrames;
+                else
+                    ++swDecodedFrames;
 
                 if (useHW && frame->format == ctx->pix_fmt) {
                     if (av_hwframe_transfer_data(swFrame, frame, 0) < 0) {
@@ -298,8 +311,8 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
                 if (std::find(selectedFramesIndices.begin(), selectedFramesIndices.end(), frame_ordinal_in_gop) != selectedFramesIndices.end()) {
                     if (!swsCtx) {
                         swsCtx = sws_getContext(frameToProcess->width, frameToProcess->height, (AVPixelFormat)frameToProcess->format,
-                                             frameToProcess->width, frameToProcess->height, AV_PIX_FMT_BGR24,
-                                             SWS_BICUBIC, nullptr, nullptr, nullptr);
+                                                frameToProcess->width, frameToProcess->height, AV_PIX_FMT_BGR24,
+                                                SWS_BICUBIC, nullptr, nullptr, nullptr);
                         if (!swsCtx) {
                             std::cerr << "Error: Could not initialize SwsContext." << std::endl;
                             av_frame_unref(frame);
@@ -308,10 +321,9 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
                         }
                     }
                     cv::Mat img(frameToProcess->height, frameToProcess->width, CV_8UC3);
-                    uint8_t* dst_data[1] = { img.data };
-                    int dst_linesize[1] = { (int)img.step[0] };
+                    uint8_t *dst_data[1] = {img.data};
+                    int dst_linesize[1] = {(int)img.step[0]};
                     sws_scale(swsCtx, frameToProcess->data, frameToProcess->linesize, 0, frameToProcess->height, dst_data, dst_linesize);
-                    allDecodedImages.push_back(std::make_tuple(info.gopIndex, frame_ordinal_in_gop, img.clone()));
                 }
                 av_frame_unref(frame);
                 if (useHW && frameToProcess == swFrame) av_frame_unref(swFrame);
@@ -320,8 +332,10 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
         avcodec_send_packet(ctx, nullptr);
         while (true) {
             int ret = avcodec_receive_frame(ctx, frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-            else if (ret < 0) break;
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                break;
+            else if (ret < 0)
+                break;
             av_frame_unref(frame);
             if (useHW && swFrame->data[0]) av_frame_unref(swFrame);
         }
@@ -339,16 +353,18 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
                 GOPSamplingInfo info = calculate_sample_indices_for_gop(
                     gopIdx, gopBuf.size(), current_carry_for_gop_sampling, interval, false);
                 current_carry_for_gop_sampling = info.next_carry_over;
-                if (info.samplesToTake > 0) decode_and_save(info);
-                for (auto& p_item : gopBuf) av_packet_free(&p_item);
+                if (info.samplesToTake > 0) gop_pkg_decoder(info);
+                for (auto &p_item : gopBuf) av_packet_free(&p_item);
                 gopBuf.clear();
             }
             gopIdx++;
         }
         if (gopIdx > 0) {
-            AVPacket* cloned_packet = av_packet_clone(packet);
-            if (cloned_packet) gopBuf.push_back(cloned_packet);
-            else std::cerr << "Failed to clone packet, skipping." << std::endl;
+            AVPacket *cloned_packet = av_packet_clone(packet);
+            if (cloned_packet)
+                gopBuf.push_back(cloned_packet);
+            else
+                std::cerr << "Failed to clone packet, skipping." << std::endl;
         }
         av_packet_unref(packet);
     }
@@ -356,29 +372,9 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
     if (gopIdx > 0 && !gopBuf.empty()) {
         GOPSamplingInfo info = calculate_sample_indices_for_gop(
             gopIdx, gopBuf.size(), current_carry_for_gop_sampling, interval, true);
-        if (info.samplesToTake > 0) decode_and_save(info);
-        for (auto& p_item : gopBuf) av_packet_free(&p_item);
+        if (info.samplesToTake > 0) gop_pkg_decoder(info);
+        for (auto &p_item : gopBuf) av_packet_free(&p_item);
         gopBuf.clear();
-    }
-
-    std::vector<std::tuple<int, int, cv::Mat>> finalImagesToSave = allDecodedImages;
-    if (SAVE_IMAGE_COUNT > 0 && (int)finalImagesToSave.size() > SAVE_IMAGE_COUNT) {
-        finalImagesToSave.resize(SAVE_IMAGE_COUNT);
-    } else if (SAVE_IMAGE_COUNT < 0 && (int)finalImagesToSave.size() > std::abs(SAVE_IMAGE_COUNT)) {
-        finalImagesToSave.erase(finalImagesToSave.begin(), finalImagesToSave.end() - std::abs(SAVE_IMAGE_COUNT));
-    } else if (SAVE_IMAGE_COUNT == 0) finalImagesToSave.clear();
-
-    for (const auto& imageInfoTuple : finalImagesToSave) {
-        int gopIndexVal = std::get<0>(imageInfoTuple);
-        int frameIndexInGopVal = std::get<1>(imageInfoTuple);
-        const cv::Mat& imgToSave = std::get<2>(imageInfoTuple);
-        std::string filename = generateTimestampFilename("frame", gopIndexVal, frameIndexInGopVal, ".jpg");
-        fs::path outputPath = fs::path(outputDir) / filename;
-        try {
-            cv::imwrite(outputPath.string(), imgToSave);
-        } catch (const cv::Exception& ex) {
-            std::cerr << "OpenCV Error saving image " << outputPath.string() << ": " << ex.what() << std::endl;
-        }
     }
 
     sws_freeContext(swsCtx);
@@ -392,12 +388,11 @@ void processAndDecodeVideo(const std::string& videoFile, int interval, const std
     }
     if (fmtCtx) avformat_close_input(&fmtCtx);
     std::cout << "Processing finished. Total images saved to disk: " << finalImagesToSave.size() << std::endl;
-    std::cout << "Total decoded frames: " << totalFrames << std::endl;
     std::cout << "Hardware decoded frames: " << hwDecodedFrames << std::endl;
     std::cout << "Software decoded frames: " << swDecodedFrames << std::endl;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <video_file_path> <sampling_interval> [output_directory]" << std::endl;
         return -1;
@@ -411,10 +406,10 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error: Sampling interval must be a positive integer." << std::endl;
             return -1;
         }
-    } catch (const std::invalid_argument& ia) {
+    } catch (const std::invalid_argument &ia) {
         std::cerr << "Error: Invalid sampling interval. Please provide an integer. " << ia.what() << std::endl;
         return -1;
-    } catch (const std::out_of_range& oor) {
+    } catch (const std::out_of_range &oor) {
         std::cerr << "Error: Sampling interval out of range. " << oor.what() << std::endl;
         return -1;
     }
