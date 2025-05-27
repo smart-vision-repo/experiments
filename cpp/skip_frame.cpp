@@ -78,8 +78,8 @@ int main(int argc, char *argv[]) {
             if (frame_idx > 1 && (frame_idx - 1) % interval == 0) {
                 hits++;
             }
-            bool isKeyFrame = (packet->flags & AV_PKT_FLAG_KEY);
-            if (isKeyFrame) {
+            bool is_key_frame = (packet->flags & AV_PKT_FLAG_KEY);
+            if (is_key_frame) {
                 int last_frame_in_gop = 0;
                 if (hits > 0) {
                     skipped_frames += pool;
@@ -109,6 +109,7 @@ int main(int argc, char *argv[]) {
 
     int last_frame_in_gop = 0;
     if (hits > 0) {
+        skipped_frames += pool;
         last_frame_in_gop = hits * interval - pool;
         if (last_frame_in_gop > 0) {
             decoded_frames += last_frame_in_gop;
