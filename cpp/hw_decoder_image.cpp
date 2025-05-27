@@ -292,11 +292,6 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
                 else if (ret < 0)
                     break;
                 AVFrame *frameToProcess = frame;
-                if (useHW && frame->format == ctx->pix_fmt)
-                    ++hwDecodedFrames;
-                else
-                    ++swDecodedFrames;
-
                 if (useHW && frame->format == ctx->pix_fmt) {
                     if (av_hwframe_transfer_data(swFrame, frame, 0) < 0) {
                         std::cerr << "Error transferring HW frame to SW frame." << std::endl;
@@ -324,6 +319,10 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
                     uint8_t *dst_data[1] = {img.data};
                     int dst_linesize[1] = {(int)img.step[0]};
                     sws_scale(swsCtx, frameToProcess->data, frameToProcess->linesize, 0, frameToProcess->height, dst_data, dst_linesize);
+                    if (useHW && frame->format == ctx->pix_fmt)
+                        ++hwDecodedFrames;
+                    else
+                        ++swDecodedFrames;
                 }
                 av_frame_unref(frame);
                 if (useHW && frameToProcess == swFrame) av_frame_unref(swFrame);
