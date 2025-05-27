@@ -48,8 +48,37 @@ services:
       - nginx_logs:/var/log/nginx
 
 volumes:
-  rabbitmq_data: /opt/docker/rabbitmq/data
-  minio_data: /opt/docker/minio/data
-  mysql_data: /opt/docker/mysql/data
-  nginx_conf: /opt/docker/nginx/conf
-  nginx_logs: /opt/docker/nginx/logs
+  rabbitmq_data: 
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/docker/rabbitmq/data
+      o: bind
+
+  minio_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/docker/minio/data
+      o: bind
+
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/docker/mysql/data
+      o: bind
+
+  nginx_conf:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/docker/nginx/conf
+      o: bind
+
+  nginx_logs: 
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/docker/nginx/logs
+      o: bind
