@@ -186,8 +186,7 @@ GOPSamplingInfo calculate_sample_indices_for_gop(int gop_idx, int b_val, long lo
 int hwDecodedFrames = 0;
 int swDecodedFrames = 0;
 
-void processAndDecodeVideo(const std::string &videoFile, int interval, const std::string &outputDir) {
-    createOutputDirectory(outputDir);
+void processAndDecodeVideo(const std::string &videoFile, int interval) {
     AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, videoFile.c_str(), nullptr, nullptr) != 0) {
         std::cerr << "Error: Could not open video file " << videoFile << std::endl;
@@ -303,7 +302,7 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
                     frameToProcess = swFrame;
                 }
 
-                if (std::find(selectedFramesIndices.begin(), selectedFramesIndices.end(), frame_ordinal_in_gop) != selectedFramesIndices.end()) {
+                if (std::find(selectedFramesIndices.begin(), selectedFramesIndices.end(), frame_ordinal_in_gop) <= selectedFramesIndices.end()) {
                     if (!swsCtx) {
                         swsCtx = sws_getContext(frameToProcess->width, frameToProcess->height, (AVPixelFormat)frameToProcess->format,
                                                 frameToProcess->width, frameToProcess->height, AV_PIX_FMT_BGR24,
@@ -319,7 +318,7 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
                     uint8_t *dst_data[1] = {img.data};
                     int dst_linesize[1] = {(int)img.step[0]};
                     sws_scale(swsCtx, frameToProcess->data, frameToProcess->linesize, 0, frameToProcess->height, dst_data, dst_linesize);
-                    if (useHW && frame->format == ctx->pix_fmt)
+                    if (useHW)
                         ++hwDecodedFrames;
                     else
                         ++swDecodedFrames;
@@ -391,8 +390,8 @@ void processAndDecodeVideo(const std::string &videoFile, int interval, const std
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <video_file_path> <sampling_interval> [output_directory]" << std::endl;
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <video_file_path> <sampling_interval>" << std::endl;
         return -1;
     }
     av_log_set_level(AV_LOG_ERROR);
@@ -411,7 +410,6 @@ int main(int argc, char *argv[]) {
         std::cerr << "Error: Sampling interval out of range. " << oor.what() << std::endl;
         return -1;
     }
-    std::string outputDirectory = (argc > 3) ? argv[3] : "./output_frames";
-    processAndDecodeVideo(videoFilePath, samplingInterval, outputDirectory);
+    processAndDecodeVideo(videoFilePath, samplingInterval);
     return 0;
 }
