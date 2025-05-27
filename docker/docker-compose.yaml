@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  minio:
+    image: minio/minio
+    container_name: smart-vision-minio
+    ports:
+      - "7101:9000"
+      - "7102:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=admin123
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smart-vision-rabbitmq
+    ports:
+      - "7201:5672"
+      - "7202:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+  mysql:
+    image: mysql:8.0
+    container_name: smart-vision-mysql
+    ports:
+      - "7301:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=smartvision
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  nginx:
+    image: nginx:latest
+    container_name: smart-vision-nginx
+    ports:
+      - "7900:80"
+      - "7943:443"
+    volumes:
+      - nginx_conf:/etc/nginx/conf.d
+      - nginx_logs:/var/log/nginx
+
+volumes:
+  rabbitmq_data: /opt/docker/rabbitmq/data
+  minio_data: /opt/docker/minio/data
+  mysql_data: /opt/docker/mysql/data
+  nginx_conf: /opt/docker/nginx/conf
+  nginx_logs: /opt/docker/nginx/logs
