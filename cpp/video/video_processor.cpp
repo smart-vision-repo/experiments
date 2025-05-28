@@ -96,7 +96,7 @@ int VideoProcessor::process() {
                     total_hits += hits;
                     pool = frame_idx_in_gop - last_frame_in_gop;
                     std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
-                    decoder.reset();
+                    // decoder.reset();
                     decoder.decode(decoding_pkts, interval);
                     std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
                     success += decoded_frams.size();
@@ -124,7 +124,7 @@ int VideoProcessor::process() {
     int last_frame_in_gop = 0;
     if (hits > 0) {
         std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
-        decoder.reset();
+        // decoder.reset();
         decoder.decode(decoding_pkts, interval);
         std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
         success += decoded_frams.size();
