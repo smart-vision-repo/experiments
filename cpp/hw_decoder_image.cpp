@@ -199,7 +199,7 @@ void processAndDecodeVideo(const std::string &videoFile, int interval) {
     }
 
     int vidIdx = -1;
-    AVCodec *codec = nullptr;
+    const AVCodec *codec = nullptr;
     AVCodecContext *ctx = nullptr;
     for (unsigned i = 0; i < fmtCtx->nb_streams; i++) {
         if (fmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
