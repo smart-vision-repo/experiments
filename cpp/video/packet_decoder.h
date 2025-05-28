@@ -21,7 +21,8 @@ public:
 
     void decode(const std::vector<AVPacket *> &pkts, int interval);
     std::vector<cv::Mat> getDecodedFrames() const;
-    void reset();
+    void reset();     // 软重置解码器
+    bool hardReset(); // 硬重置编解码器
 
 private:
     const std::string video_file_name;
@@ -40,6 +41,7 @@ private:
     cv::Mat avFrameToMat(AVFrame *frame);
     AVFrame *convertToRGB(AVFrame *frame);
     void resetDecoder(); // 内部重置函数
+    bool resetCodec();
 };
 
 #endif // PACKET_DECODER_H
