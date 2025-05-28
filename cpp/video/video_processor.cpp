@@ -156,7 +156,7 @@ int VideoProcessor::process() {
               << "discrepancies: " << frame_idx - decoded_frames - skipped_frames << std::endl
               << "percentage: " << percentage << "%" << std::endl
               << "success: " << success << std::endl
-              << "extracted frames: " << total_hits + pool << std::endl;
+              << "extracted frames: " << total_hits << std::endl;
     return 0;
 }
 
