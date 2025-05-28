@@ -74,6 +74,8 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             data += ret;
             size -= ret;
 
+            std::cout << parsed_pkt -> size << std::endl;
+
             if (parsed_pkt->size > 0) {
                 if (avcodec_send_packet(ctx, parsed_pkt) < 0) {
                     std::cerr << "Error sending packet to decoder." << std::endl;
