@@ -382,7 +382,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
         av_frame_unref(frame);
     }
 
-    int pkt_size = pkts.size();
+    int pkt_size = pkts.size() - 1;
     std::vector<int> frame_indices;
     while (pkt_size >= 0) {
         frame_indices.push_back(pkt_size);
