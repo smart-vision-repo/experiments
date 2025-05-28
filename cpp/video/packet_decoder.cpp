@@ -389,6 +389,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
         pkt_size -= interval;
     }
     std::sort(frame_indices.begin(), frame_indices.end());
+    std::cout << "count: " << frame_indices.size() << std::endl;
     std::vector<cv::Mat> filtered_frames;
     for (size_t i = 0; i < decoded_frames.size(); ++i) {
         if (std::find(frame_indices.begin(), frame_indices.end(), i) != frame_indices.end()) {
