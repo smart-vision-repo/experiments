@@ -1,29 +1,54 @@
 #!/usr/bin/env bash
-
-set -e  # 一旦有命令失败就退出
 set -o pipefail
 
-SRC_FILES="main.cpp video_processor.cpp packet_decoder.cpp"
-OUT_FILE="app_video_processor"
+# 自动检测依赖环境
+PKG_OK=true
 
-# FFmpeg & OpenCV 常见路径 (Homebrew 安装在 M1 Mac 下)
-INCLUDE_FLAGS="-I/opt/homebrew/include -I/opt/homebrew/include/opencv4"
-LIB_FLAGS="-L/opt/homebrew/lib"
-FFMPEG_LIBS="-lavformat -lavcodec -lavutil -lswscale"
-OPENCV_LIBS=$(pkg-config --libs opencv4 2>/dev/null || echo "-lopencv_core -lopencv_imgproc -lopencv_highgui")
+check_pkg() {
+    if ! pkg-config --exists "$1"; then
+        echo "[ERROR] Missing pkg: $1" >&2
+        PKG_OK=false
+    fi
+}
 
-# 编译命令
-g++ -std=c++17 $SRC_FILES -o $OUT_FILE \
-    $INCLUDE_FLAGS $LIB_FLAGS \
-    $FFMPEG_LIBS $OPENCV_LIBS \
-    -lpthread -Wall -Wno-deprecated-declarations \
-    2> compile.log
+# 检查必要依赖
+check_pkg libavformat
+check_pkg libavcodec
+check_pkg libavutil
+check_pkg libswscale
+check_pkg opencv4
 
-# 如果失败才输出错误
-if [ $? -ne 0 ]; then
-    cat compile.log
-    echo "[ERROR] Compilation failed."
+if ! $PKG_OK; then
+    echo "[ERROR] Required packages not found, aborting." >&2
     exit 1
 fi
 
-rm -f compile.log
+# 源文件列表
+SRC_FILES="main.cpp video_processor.cpp packet_decoder.cpp"
+OUT_FILE="skip_frame"
+
+# 获取编译参数
+CXX_FLAGS="-std=c++17 -Wall -Wno-deprecated-declarations"
+FFMPEG_CFLAGS=$(pkg-config --cflags libavformat libavcodec libavutil libswscale)
+FFMPEG_LIBS=$(pkg-config --libs libavformat libavcodec libavutil libswscale)
+OPENCV_LIBS=$(pkg-config --libs opencv4)
+
+# CUDA（可选支持）
+CUDA_FLAGS=""
+if nvcc --version &>/dev/null; then
+    CUDA_FLAGS="-lcuda -lcudart"
+fi
+
+# 编译
+g++ $CXX_FLAGS $SRC_FILES -o "$OUT_FILE" \
+    $FFMPEG_CFLAGS \
+    $FFMPEG_LIBS $OPENCV_LIBS $CUDA_FLAGS \
+    -lpthread 2> .compile_log
+
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Compilation failed:"
+    cat .compile_log >&2
+    exit 1
+fi
+
+rm -f .compile_log
