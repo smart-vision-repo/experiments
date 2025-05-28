@@ -181,12 +181,12 @@ int PacketDecoder::initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwD
 }
 
 // 新增的辅助函数：重置解码器状态
-void PacketDecoder::resetDecoder() {
-    if (ctx) {
-        avcodec_flush_buffers(ctx);
-        // std::cout << "Decoder state reset" << std::endl;
-    }
-}
+// void PacketDecoder::resetDecoder() {
+//     if (ctx) {
+//         avcodec_flush_buffers(ctx);
+//         // std::cout << "Decoder state reset" << std::endl;
+//     }
+// }
 
 // 新增的辅助函数：将AVFrame转换为cv::Mat
 cv::Mat PacketDecoder::avFrameToMat(AVFrame *frame) {
