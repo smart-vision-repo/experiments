@@ -27,7 +27,7 @@ private:
     int initHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx);
     AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
     bool useHW;
-    const std::string &video_file_name;
+    const std::string video_file_name;
     AVCodecID codec_id;
     const AVCodec *codec;
     AVBufferRef *hwCtxRef;

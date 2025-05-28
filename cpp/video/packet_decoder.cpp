@@ -96,7 +96,7 @@ bool PacketDecoder::initialize() {
     return true;
 }
 
-AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+static AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
     if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
         std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
         return AV_PIX_FMT_NONE;
@@ -150,7 +150,7 @@ AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat 
     return AV_PIX_FMT_NONE;
 }
 
-int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx) {
+static int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx) {
     if (*hwDeviceCtx != nullptr) {
         av_buffer_unref(hwDeviceCtx);
         *hwDeviceCtx = nullptr;
@@ -181,7 +181,7 @@ int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDevi
 void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     AVFrame *frame = av_frame_alloc();
     AVFrame *swFrame = nullptr;
-    struct SwsContext *swsCtx = nullptr;
+    // struct SwsContext *swsCtx = nullptr;
     if (!frame) {
         std::cerr << "Error: Could not allocate frame or packet." << std::endl;
         av_frame_free(&frame);
