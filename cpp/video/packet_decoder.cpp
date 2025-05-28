@@ -88,6 +88,7 @@ void PacketDecoder::decode(const std::vector<AVPacket*>& pkts, int interval) {
                         std::cerr << "Error while receiving frame." << std::endl;
                         break;
                     }
+                    std::cout << "Parsed packet size: " << parsed_pkt->size << std::endl;
                     // Save or process decoded frame (optional)
                     decoded_frames.push_back(cv::Mat()); // Placeholder
                     av_frame_unref(frame);
