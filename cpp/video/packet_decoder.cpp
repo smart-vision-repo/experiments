@@ -16,13 +16,13 @@
 PacketDecoder::PacketDecoder(std::string video_file_name) :
     video_file_name(video_file_name),
     useHW(false),
-    hwCtxRef(nullptr),
-    ctx(nullptr),
     parser(nullptr),
+    ctx(nullptr),
     codec(nullptr),
-    swsCtx(nullptr),
     fmtCtx(nullptr),
-    hw_device_ctx(nullptr) {
+    hwCtxRef(nullptr),
+    hw_device_ctx(nullptr),
+    swsCtx(nullptr) {
     if (!initialize()) {
         throw std::runtime_error("Failed to initialize PacketDecoder.");
     }
@@ -83,7 +83,7 @@ bool PacketDecoder::initialize() {
     }
 
     ctx->thread_count = std::max(1u, std::thread::hardware_concurrency() / 2);
-    useHW = initHardwareDecoder(ctx, &hwCtxRef);
+    useHW = initHWDecoder(ctx, &hwCtxRef);
 
     if (avcodec_open2(ctx, codec, nullptr) < 0) {
         std::cerr << "Error: Could not open codec." << std::endl;
@@ -96,7 +96,7 @@ bool PacketDecoder::initialize() {
     return true;
 }
 
-static AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+AVPixelFormat PacketDecoder::getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
     if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
         std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
         return AV_PIX_FMT_NONE;
@@ -150,7 +150,7 @@ static AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixel
     return AV_PIX_FMT_NONE;
 }
 
-static int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx) {
+int PacketDecoder::initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx) {
     if (*hwDeviceCtx != nullptr) {
         av_buffer_unref(hwDeviceCtx);
         *hwDeviceCtx = nullptr;
