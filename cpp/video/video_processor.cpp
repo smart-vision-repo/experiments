@@ -89,7 +89,7 @@ int VideoProcessor::process() {
             if (is_key_frame) {
                 int last_frame_in_gop = 0;
                 if (hits > 0) {
-                    std::cout << gop_idx << "," << hits << std::endl;
+                    // std::cout << gop_idx << "," << hits << std::endl;
                     skipped_frames += pool;
                     last_frame_in_gop = hits * interval - pool;
                     decoded_frames += last_frame_in_gop;
