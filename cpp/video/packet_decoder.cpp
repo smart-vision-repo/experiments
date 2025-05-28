@@ -285,10 +285,18 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
         return;
     }
 
+    int pkt_size = pkts.size();
+    std::vector<int> frame_indices;
+    while (pkt_size >= 0) {
+        frame_indices.push_back(pkt_size);
+        pkt_size -= interval;
+    }
+    std::sort(frame_indices.begin(), frame_indices.end());
+
     // 清空之前的解码结果
     decoded_frames.clear();
 
-    std::cout << "Starting to decode " << pkts.size() << " packets..." << std::endl;
+    // std::cout << "Starting to decode " << pkts.size() << " packets..." << std::endl;
 
     for (size_t i = 0; i < pkts.size(); ++i) {
         AVPacket *pkt = pkts[i];
@@ -297,8 +305,8 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             continue;
         }
 
-        std::cout << "Decoding packet " << i << ", size: " << pkt->size
-                  << ", flags: " << pkt->flags << std::endl;
+        // std::cout << "Decoding packet " << i << ", size: " << pkt->size
+        //           << ", flags: " << pkt->flags << std::endl;
 
         // 发送数据包到解码器
         int ret = avcodec_send_packet(ctx, pkt);
@@ -313,27 +321,27 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
 
             if (ret == AVERROR(EAGAIN)) {
                 // 需要更多输入数据
-                std::cout << "  Decoder needs more input data" << std::endl;
+                // std::cout << "  Decoder needs more input data" << std::endl;
                 break;
             } else if (ret == AVERROR_EOF) {
                 // 解码器结束
-                std::cout << "  Decoder finished" << std::endl;
+                // std::cout << "  Decoder finished" << std::endl;
                 break;
             } else if (ret < 0) {
-                std::cerr << "  Error receiving frame: " << ret << std::endl;
+                // std::cerr << "  Error receiving frame: " << ret << std::endl;
                 break;
             }
 
             // 成功解码一帧
-            std::cout << "  Successfully decoded frame " << decoded_frames.size()
-                      << ", format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format)
-                      << ", size: " << frame->width << "x" << frame->height << std::endl;
+            // std::cout << "  Successfully decoded frame " << decoded_frames.size()
+            //           << ", format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format)
+            //           << ", size: " << frame->width << "x" << frame->height << std::endl;
 
             // 将AVFrame转换为cv::Mat
             cv::Mat mat = avFrameToMat(frame);
             if (!mat.empty()) {
                 decoded_frames.push_back(mat);
-                std::cout << "  Converted to cv::Mat successfully" << std::endl;
+                // std::cout << "  Converted to cv::Mat successfully" << std::endl;
             } else {
                 std::cerr << "  Failed to convert AVFrame to cv::Mat" << std::endl;
             }
@@ -343,7 +351,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     }
 
     // 刷新解码器以获取任何剩余的帧
-    std::cout << "Flushing decoder..." << std::endl;
+    // std::cout << "Flushing decoder..." << std::endl;
     avcodec_send_packet(ctx, nullptr); // 发送NULL包以刷新解码器
 
     while (true) {
@@ -351,11 +359,11 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
         if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
             break;
         } else if (ret < 0) {
-            std::cerr << "Error during decoder flush: " << ret << std::endl;
+            // std::cerr << "Error during decoder flush: " << ret << std::endl;
             break;
         }
 
-        std::cout << "  Flushed frame " << decoded_frames.size() << std::endl;
+        // std::cout << "  Flushed frame " << decoded_frames.size() << std::endl;
 
         cv::Mat mat = avFrameToMat(frame);
         if (!mat.empty()) {
@@ -366,7 +374,13 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     }
 
     av_frame_free(&frame);
-
+    std::vector<cv::Mat> filtered_frames;
+    for (size_t i = 0; i < decoded_frames.size(); ++i) {
+        if (std::find(frame_indices.begin(), frame_indices.end(), i) != frame_indices.end()) {
+            filtered_frames.push_back(decoded_frames[i]);
+        }
+    }
+    decoded_frames = std::move(filtered_frames);
     std::cout << "Decoding completed. Total frames decoded: " << decoded_frames.size() << std::endl;
 }
 
