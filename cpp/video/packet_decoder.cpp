@@ -57,7 +57,7 @@ void PacketDecoder::decode(const std::vector<AVPacket*>& pkts, int interval) {
     for (AVPacket* pkt : pkts) {
         uint8_t* data = pkt->data;
         int size = pkt->size;
-
+        std::cerr << "pkt size." << size << std::endl;
         while (size > 0) {
             int ret = av_parser_parse2(
                 parser, ctx,
