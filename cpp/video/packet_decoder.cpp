@@ -302,18 +302,18 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     // 每次解码新的GOP时都需要flush解码器内部状态
     avcodec_flush_buffers(ctx);
 
-    std::cout << "Starting to decode " << pkts.size() << " packets..." << std::endl;
+    // std::cout << "Starting to decode " << pkts.size() << " packets..." << std::endl;
 
     // 第一阶段：处理所有输入包
     for (size_t i = 0; i < pkts.size(); ++i) {
         AVPacket *pkt = pkts[i];
         if (!pkt) {
-            std::cerr << "Warning: Null packet at index " << i << std::endl;
+            // std::cerr << "Warning: Null packet at index " << i << std::endl;
             continue;
         }
 
-        std::cout << "Decoding packet " << i << ", size: " << pkt->size
-                  << ", flags: " << pkt->flags;
+        // std::cout << "Decoding packet " << i << ", size: " << pkt->size
+        //           << ", flags: " << pkt->flags;
 
         // 检查是否是关键帧
         if (pkt->flags & AV_PKT_FLAG_KEY) {
@@ -331,7 +331,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
 
             // 如果发送失败，尝试重置解码器状态
             if (ret == AVERROR_INVALIDDATA || ret == AVERROR(EINVAL)) {
-                std::cout << "Attempting to reset decoder due to invalid data..." << std::endl;
+                // std::cout << "Attempting to reset decoder due to invalid data..." << std::endl;
                 avcodec_flush_buffers(ctx);
                 continue;
             }
@@ -354,9 +354,9 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             }
 
             // 成功解码一帧
-            std::cout << "  Successfully decoded frame " << decoded_frames.size()
-                      << ", format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format)
-                      << ", size: " << frame->width << "x" << frame->height << std::endl;
+            // std::cout << "  Successfully decoded frame " << decoded_frames.size()
+            //           << ", format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format)
+            //           << ", size: " << frame->width << "x" << frame->height << std::endl;
 
             // 将AVFrame转换为cv::Mat
             cv::Mat mat = avFrameToMat(frame);
@@ -372,7 +372,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
 
     // 第二阶段：刷新解码器缓存
     // 原因：解码器内部可能缓存了一些帧用于B帧重排序或多线程处理
-    std::cout << "Flushing decoder to get remaining frames..." << std::endl;
+    // std::cout << "Flushing decoder to get remaining frames..." << std::endl;
     avcodec_send_packet(ctx, nullptr); // 发送NULL包告诉解码器输入结束
 
     while (true) {
@@ -388,7 +388,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             break;
         }
 
-        std::cout << "  Flushed frame " << decoded_frames.size() << std::endl;
+        // std::cout << "  Flushed frame " << decoded_frames.size() << std::endl;
 
         cv::Mat mat = avFrameToMat(frame);
         if (!mat.empty()) {
@@ -415,7 +415,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
 
     av_frame_free(&frame);
 
-    std::cout << "Decoding completed. Total frames decoded: " << decoded_frames.size() << std::endl;
+    // std::cout << "Decoding completed. Total frames decoded: " << decoded_frames.size() << std::endl;
 }
 
 std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
