@@ -17,13 +17,13 @@ g++ -std=c++17 $SRC_FILES -o $OUT_FILE \
     $INCLUDE_FLAGS $LIB_FLAGS \
     $FFMPEG_LIBS $OPENCV_LIBS \
     -lpthread -Wall -Wno-deprecated-declarations \
-    2> .compile_log
+    2> compile.log
 
 # 如果失败才输出错误
 if [ $? -ne 0 ]; then
-    cat .compile_log
+    cat compile.log
     echo "[ERROR] Compilation failed."
     exit 1
 fi
 
-rm -f .compile_log
+rm -f compile.log
