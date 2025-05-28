@@ -100,7 +100,7 @@ int VideoProcessor::process() {
                     decoder.decode(decoding_pkts, interval);
                     std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
                     success += decoded_frams.size();
-                    std::cout << "decoded: " << decoded_frams.size() << std::endl;
+                    // std::cout << "decoded: " << decoded_frams.size() << std::endl;
                     total_packages += decoding_pkts.size();
                     clear_av_packets(&decoding_pkts);
                 } else {
@@ -128,7 +128,7 @@ int VideoProcessor::process() {
         decoder.decode(decoding_pkts, interval);
         std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
         success += decoded_frams.size();
-        std::cout << "decoded: " << decoded_frams.size() << std::endl;
+        // std::cout << "decoded: " << decoded_frams.size() << std::endl;
         skipped_frames += pool;
         last_frame_in_gop = hits * interval - pool;
         if (last_frame_in_gop > 0) {
@@ -155,7 +155,7 @@ int VideoProcessor::process() {
               << "skipped frames: " << skipped_frames << std::endl
               << "discrepancies: " << frame_idx - decoded_frames - skipped_frames << std::endl
               << "percentage: " << percentage << "%" << std::endl
-              << "success: " << success << std::endl
+              << "successfully decoded: " << success << std::endl
               << "extracted frames: " << total_hits << std::endl;
     return 0;
 }
