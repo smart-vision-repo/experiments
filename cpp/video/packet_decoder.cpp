@@ -38,6 +38,60 @@ public:
         cleanup();
     }
 
+    AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+        if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
+            std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
+            return AV_PIX_FMT_NONE;
+        }
+        AVHWDeviceContext *hw_device_ctx_data = (AVHWDeviceContext *)ctx->hw_device_ctx->data;
+        const enum AVHWDeviceType active_device_type = hw_device_ctx_data->type;
+        std::cout << "getHWFormatCallback: Active HW device type is '"
+                  << av_hwdevice_get_type_name(active_device_type)
+                  << "'. Searching for compatible pixel format..." << std::endl;
+
+        for (const enum AVPixelFormat *p_fmt = pix_fmts; *p_fmt != AV_PIX_FMT_NONE; ++p_fmt) {
+            std::cout << "  - Considering format: " << av_get_pix_fmt_name(*p_fmt) << std::endl;
+            bool format_is_compatible = false;
+            switch (active_device_type) {
+            case AV_HWDEVICE_TYPE_CUDA:
+                if (*p_fmt == AV_PIX_FMT_CUDA) format_is_compatible = true;
+                break;
+            case AV_HWDEVICE_TYPE_VAAPI:
+                if (*p_fmt == AV_PIX_FMT_VAAPI) format_is_compatible = true;
+                break;
+            case AV_HWDEVICE_TYPE_VDPAU:
+                if (*p_fmt == AV_PIX_FMT_VDPAU) format_is_compatible = true;
+                break;
+            case AV_HWDEVICE_TYPE_QSV:
+                if (*p_fmt == AV_PIX_FMT_QSV) format_is_compatible = true;
+                break;
+            case AV_HWDEVICE_TYPE_D3D11VA:
+                if (*p_fmt == AV_PIX_FMT_D3D11) format_is_compatible = true;
+                break;
+            case AV_HWDEVICE_TYPE_VIDEOTOOLBOX:
+                if (*p_fmt == AV_PIX_FMT_VIDEOTOOLBOX) format_is_compatible = true;
+                break;
+            default:
+                std::cerr << "getHWFormatCallback: Unhandled or unknown active_device_type: "
+                          << av_hwdevice_get_type_name(active_device_type) << std::endl;
+                break;
+            }
+            if (format_is_compatible) {
+                std::cout << "Hardware pixel format selected: " << av_get_pix_fmt_name(*p_fmt)
+                          << " (Compatible with " << av_hwdevice_get_type_name(active_device_type) << ")" << std::endl;
+                return *p_fmt;
+            }
+        }
+        std::cerr << "getHWFormatCallback: Failed to find a suitable HW pixel format for device type: "
+                  << av_hwdevice_get_type_name(active_device_type) << std::endl;
+        std::cerr << "  Available formats in pix_fmts were: ";
+        for (const enum AVPixelFormat *p_fmt = pix_fmts; *p_fmt != AV_PIX_FMT_NONE; ++p_fmt) {
+            std::cerr << av_get_pix_fmt_name(*p_fmt) << " ";
+        }
+        std::cerr << std::endl;
+        return AV_PIX_FMT_NONE;
+    }
+
     bool initialize() {
         codec = avcodec_find_decoder_by_name("h264_cuvid");
         if (codec) {
