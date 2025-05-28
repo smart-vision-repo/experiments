@@ -95,7 +95,7 @@ int VideoProcessor::process(const std::string& video_file_name, int interval) {
                     total_hits += hits;
                     pool = frame_idx_in_gop - last_frame_in_gop;
                     std::vector<AVPacket*> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
-                    decoder.decode(&decoding_pkts, interval);
+                    decoder.decode(decoding_pkts, interval);
                     total_packages += decoding_pkts.size();
                     clear_av_packets(&decoding_pkts);
                     clear_av_packets(pkts);
