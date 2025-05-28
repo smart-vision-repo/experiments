@@ -39,7 +39,7 @@ private:
     int initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx);
     cv::Mat avFrameToMat(AVFrame *frame);
     AVFrame *convertToRGB(AVFrame *frame);
-    bool resetCodec();
+    void resetDecoder();
 };
 
 #endif // PACKET_DECODER_H
