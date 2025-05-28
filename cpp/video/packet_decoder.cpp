@@ -54,6 +54,16 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     AVFrame *frame = av_frame_alloc();
     AVPacket *parsed_pkt = av_packet_alloc();
 
+    // 延迟打开 codec（只有第一次 decode 时执行）
+    static bool codec_opened = false;
+    if (!codec_opened) {
+        if (avcodec_open2(ctx, codec, nullptr) < 0) {
+            std::cerr << "Could not open codec." << std::endl;
+            return;
+        }
+        codec_opened = true;
+    }
+
     for (AVPacket *pkt : pkts) {
         uint8_t *data = pkt->data;
         int size = pkt->size;
@@ -74,27 +84,29 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             data += ret;
             size -= ret;
 
-            std::cout << parsed_pkt -> size << std::endl;
+            if (parsed_pkt->size == 0) {
+                std::cerr << "parsed pkt size is 0;" << std::endl;
+                continue; // nothing to decode
+            }
 
-            if (parsed_pkt->size > 0) {
-                if (avcodec_send_packet(ctx, parsed_pkt) < 0) {
-                    std::cerr << "Error sending packet to decoder." << std::endl;
+            if (avcodec_send_packet(ctx, parsed_pkt) < 0) {
+                std::cerr << "Error sending packet to decoder." << std::endl;
+                break;
+            }
+
+            while (true) {
+                ret = avcodec_receive_frame(ctx, frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                    break;
+                else if (ret < 0) {
+                    std::cerr << "Error while receiving frame." << std::endl;
                     break;
                 }
 
-                while (true) {
-                    ret = avcodec_receive_frame(ctx, frame);
-                    std::cout << ret << std::endl;
-                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                        break;
-                    else if (ret < 0) {
-                        std::cerr << "Error while receiving frame." << std::endl;
-                        break;
-                    }
-
-                    decoded_frames.push_back(cv::Mat()); // Replace with real frame handling
-                    av_frame_unref(frame);
-                }
+                std::cout << "Got frame: " << frame->width << "x" << frame->height << std::endl;
+                // 你可以这里填充 cv::Mat
+                decoded_frames.push_back(cv::Mat());  // Placeholder
+                av_frame_unref(frame);
             }
         }
     }
@@ -102,6 +114,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     av_frame_free(&frame);
     av_packet_free(&parsed_pkt);
 }
+
 
 
 std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
