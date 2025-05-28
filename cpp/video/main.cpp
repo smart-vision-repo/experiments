@@ -51,5 +51,6 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    return process(video_file_name, interval);
+    // return process(video_file_name, interval);
+    return 0;
 }
