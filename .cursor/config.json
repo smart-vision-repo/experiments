@@ -1,0 +1,7 @@
+{
+  "flags": [
+    "-I/opt/homebrew/Cellar/ffmpeg/7.1.1_2/include",
+    "-I/opt/homebrew/include",
+    "-I/opt/homebrew/include/opencv4/"
+  ]
+}

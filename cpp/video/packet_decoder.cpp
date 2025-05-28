@@ -22,6 +22,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 #include <opencv2/opencv.hpp>
+#include "packet_decoder.h"
 
 static inline std::string ffmpeg_error_string(int errnum) {
     char errbuf[AV_ERROR_MAX_STRING_SIZE];

@@ -1,28 +1,6 @@
-
 #include <iostream>
-#include <string>
-#include <vector>
-#include <stdexcept>
-#include <memory>
-#include <map>
-#include <chrono>
+#include "video_processor.h"
 #include <filesystem>
-#include <iomanip>
-#include <sstream>
-#include <thread>
-#include <algorithm>
-#include <numeric>
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
-#include <libavutil/hwcontext.h>
-#include <libavutil/error.h>
-#include <libswscale/swscale.h>
-}
-#include <opencv2/opencv.hpp>
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -51,6 +29,6 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    // return process(video_file_name, interval);
-    return 0;
+    VideoProcessor processor;
+    return processor.process(video_file_name, interval);
 }
