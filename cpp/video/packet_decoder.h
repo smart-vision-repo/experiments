@@ -21,6 +21,7 @@ public:
 
     void decode(const std::vector<AVPacket *> &pkts, int interval);
     std::vector<cv::Mat> getDecodedFrames() const;
+    void reset();
 
 private:
     const std::string video_file_name;
@@ -38,6 +39,7 @@ private:
     int initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx);
     cv::Mat avFrameToMat(AVFrame *frame);
     AVFrame *convertToRGB(AVFrame *frame);
+    void resetDecoder(); // 内部重置函数
 };
 
 #endif // PACKET_DECODER_H
