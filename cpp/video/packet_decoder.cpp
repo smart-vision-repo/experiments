@@ -89,6 +89,11 @@ bool PacketDecoder::decode(const std::vector<AVPacket*>& packets, int interval) 
                 break;  // No more frames available or end of file
             else if (ret < 0)
                 return false;  // Error in receiving frame
+            index ++;
+
+            if (std::find(frame_indices.begin(), frame_indices.end(), index) == frame_indices.end()) {
+                continue;
+            }
 
             // Determine which frame to process
             AVFrame* frameToProcess = frame_;
