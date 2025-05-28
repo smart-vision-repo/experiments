@@ -96,7 +96,7 @@ bool PacketDecoder::initialize() {
     return true;
 }
 
-AVPixelFormat PacketDecoder::getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+static AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
     if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
         std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
         return AV_PIX_FMT_NONE;

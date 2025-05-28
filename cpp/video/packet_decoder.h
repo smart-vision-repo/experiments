@@ -36,7 +36,6 @@ private:
     std::vector<cv::Mat> decoded_frames;
     bool initialize();
     int initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx);
-    AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 };
 
 #endif // PACKET_DECODER_H
