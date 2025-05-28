@@ -16,7 +16,7 @@ extern "C" {
 }
 class PacketDecoder {
 public:
-    PacketDecoder(AVCodecID codec_id, std::string &video_file_name);
+    PacketDecoder(std::string &video_file_name);
     ~PacketDecoder();
 
     void decode(const std::vector<AVPacket *> &pkts, int interval);

@@ -28,10 +28,9 @@ extern "C" {
 #include <opencv2/opencv.hpp>
 
 VideoProcessor::VideoProcessor(const std::string &video_file_name, int interval) :
-    decoder(AV_CODEC_ID_H264, const_cast<std::string&>(video_file_name)), // 如果需要其他 codec，可以替换
+    decoder(AV_CODEC_ID_H264, const_cast<std::string &>(video_file_name)), // 如果需要其他 codec，可以替换
     video_file_name(video_file_name),
-    interval(interval)
-{
+    interval(interval) {
     // 其他初始化逻辑
 }
 
@@ -67,7 +66,6 @@ int VideoProcessor::process() {
         return -1;
     }
 
-    AVCodecID codec_id = fmtCtx->streams[videoStream]->codecpar->codec_id;
     AVPacket *packet = av_packet_alloc();
     if (!packet) {
         std::cerr << "Could not allocate AVPacket" << std::endl;
