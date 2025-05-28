@@ -89,19 +89,20 @@ int VideoProcessor::process() {
             if (is_key_frame) {
                 int last_frame_in_gop = 0;
                 if (hits > 0) {
+                    std::cout << gop_idx << "," << hits << std::endl;
                     skipped_frames += pool;
                     last_frame_in_gop = hits * interval - pool;
                     decoded_frames += last_frame_in_gop;
                     total_hits += hits;
                     pool = frame_idx_in_gop - last_frame_in_gop;
-                    std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
-                    decoder.reset();
-                    decoder.decode(decoding_pkts, interval);
-                    std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
-                    success += decoded_frams.size();
-                    std::cout << "decoded: " << decoded_frams.size() << std::endl;
-                    total_packages += decoding_pkts.size();
-                    clear_av_packets(&decoding_pkts);
+                    // std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
+                    // decoder.reset();
+                    // decoder.decode(decoding_pkts, interval);
+                    // std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
+                    // success += decoded_frams.size();
+                    // std::cout << "decoded: " << decoded_frams.size() << std::endl;
+                    // total_packages += decoding_pkts.size();
+                    // clear_av_packets(&decoding_pkts);
                 } else {
                     pool += frame_idx_in_gop;
                 }
@@ -122,12 +123,12 @@ int VideoProcessor::process() {
 
     int last_frame_in_gop = 0;
     if (hits > 0) {
-        std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
-        decoder.reset();
-        decoder.decode(decoding_pkts, interval);
-        std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
-        success += decoded_frams.size();
-        std::cout << "decoded: " << decoded_frams.size() << std::endl;
+        // std::vector<AVPacket *> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
+        // decoder.reset();
+        // decoder.decode(decoding_pkts, interval);
+        // std::vector<cv::Mat> decoded_frams = decoder.getDecodedFrames();
+        // success += decoded_frams.size();
+        // std::cout << "decoded: " << decoded_frams.size() << std::endl;
         skipped_frames += pool;
         last_frame_in_gop = hits * interval - pool;
         if (last_frame_in_gop > 0) {
