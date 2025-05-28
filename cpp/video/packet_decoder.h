@@ -24,6 +24,7 @@ public:
     void reset(); // 软重置解码器
 
 private:
+    int vidIdx;
     const std::string video_file_name;
     bool useHW;
     AVCodecParserContext *parser;

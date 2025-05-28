@@ -16,6 +16,7 @@
 #include <numeric>
 
 PacketDecoder::PacketDecoder(std::string video_file_name) :
+    vidIdx(-1),
     video_file_name(video_file_name),
     useHW(false),
     parser(nullptr),
@@ -55,8 +56,6 @@ bool PacketDecoder::initialize() {
         avformat_close_input(&fmtCtx);
         return false;
     }
-
-    int vidIdx = -1;
 
     for (unsigned i = 0; i < fmtCtx->nb_streams; i++) {
         if (fmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -321,8 +320,12 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             continue;
         }
 
-        // std::cout << "Decoding packet " << i << ", size: " << pkt->size
-        //           << ", flags: " << pkt->flags;
+        // 确保stream_index正确
+        if (pkt->stream_index != vidIdx) {
+            std::cout << "Correcting packet " << i << " stream_index from "
+                      << pkt->stream_index << " to " << vidIdx << std::endl;
+            pkt->stream_index = vidIdx;
+        }
 
         // 检查是否是关键帧
         if (pkt->flags & AV_PKT_FLAG_KEY) {
