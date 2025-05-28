@@ -77,6 +77,7 @@ int VideoProcessor::process(const std::string& video_file_name, int interval) {
     int hits = 0, pool = 0;
     int total_hits = 0, decoded_frames = 0, skipped_frames = 0, total_packages = 0;
     std::vector<AVPacket*>* pkts = new std::vector<AVPacket*>();
+    int success = 0;
 
     while (av_read_frame(fmtCtx, packet) >= 0) {
         if (packet->stream_index == videoStream) {
@@ -96,6 +97,9 @@ int VideoProcessor::process(const std::string& video_file_name, int interval) {
                     pool = frame_idx_in_gop - last_frame_in_gop;
                     std::vector<AVPacket*> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
                     decoder.decode(decoding_pkts, interval);
+                    std::vector<cv::Mat>  decoded_frams = decoder.getDecodedFrames();
+                    success += decoded_frams.size();
+                    std::cout << "decoded: " << decoded_frams.size() << std::endl;
                     total_packages += decoding_pkts.size();
                     clear_av_packets(&decoding_pkts);
                     clear_av_packets(pkts);
@@ -139,6 +143,7 @@ int VideoProcessor::process(const std::string& video_file_name, int interval) {
               << "skipped frames: " << skipped_frames << std::endl
               << "discrepancies: " << frame_idx - decoded_frames - skipped_frames << std::endl
               << "percentage: " << percentage << "%" << std::endl
+              << "success: " << success << std::endl
               << "extracted frames: " << total_hits + pool << std::endl;
     return 0;
 }
