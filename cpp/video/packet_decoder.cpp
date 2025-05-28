@@ -12,7 +12,9 @@ extern "C" {
 PacketDecoder::PacketDecoder(AVCodecID codec_id, bool prefer_hw)
     : codec_id_(codec_id), prefer_hw_(prefer_hw), ctx_(nullptr),
       hw_device_ctx_(nullptr), frame_(nullptr), sw_frame_(nullptr),
-      sws_ctx_(nullptr) {}
+      sws_ctx_(nullptr) {
+        initialize();
+      }
 
 PacketDecoder::~PacketDecoder() {
     releaseResources();
@@ -57,46 +59,46 @@ bool PacketDecoder::initialize() {
     return frame_ && sw_frame_;
 }
 
-bool PacketDecoder::decode(const std::vector<AVPacket*>& packets) {
+
+bool PacketDecoder::decode(const std::vector<AVPacket*>& packets, int interval) {
+    decoded_frames_.clear();
+    // Annotate the processing steps within the decode method
+
+    // Clear any previously decoded frames to start fresh
     decoded_frames_.clear();
 
+    // Calculate the indices of frames to be processed based on the interval
+    int frame_count = packets.size();
+    std::vector<int> frame_indices;
+    while(frame_count > 0) {
+        frame_indices.push_back(frame_count);
+        frame_count -= interval;
+    }
+    frame_indices.push_back(0);
+    std::sort(frame_indices.begin(), frame_indices.end());
+
+    // Initialize index for tracking packet processing
+    int index = 0;
+
+    // Iterate over each packet to decode
     for (AVPacket* pkt : packets) {
+        // Send the packet to the decoder
         if (avcodec_send_packet(ctx_, pkt) < 0) continue;
 
+        // Receive frames from the decoder
         while (true) {
             int ret = avcodec_receive_frame(ctx_, frame_);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                break;
+                break;  // No more frames available or end of file
             else if (ret < 0)
-                return false;
+                return false;  // Error in receiving frame
 
+            // Determine which frame to process
             AVFrame* frameToProcess = frame_;
-            if (prefer_hw_ && frame_->format == ctx_->pix_fmt) {
-                if (av_hwframe_transfer_data(sw_frame_, frame_, 0) < 0) {
-                    av_frame_unref(frame_);
-                    continue;
-                }
-                sw_frame_->width = frame_->width;
-                sw_frame_->height = frame_->height;
-                frameToProcess = sw_frame_;
-            }
-
-            if (!sws_ctx_) {
-                sws_ctx_ = sws_getContext(
-                    frameToProcess->width, frameToProcess->height, (AVPixelFormat)frameToProcess->format,
-                    frameToProcess->width, frameToProcess->height, AV_PIX_FMT_BGR24,
-                    SWS_BICUBIC, nullptr, nullptr, nullptr);
-            }
-
-            cv::Mat img(frameToProcess->height, frameToProcess->width, CV_8UC3);
-            uint8_t* dst_data[1] = { img.data };
-            int dst_linesize[1] = { (int)img.step[0] };
-            sws_scale(sws_ctx_, frameToProcess->data, frameToProcess->linesize,
-                      0, frameToProcess->height, dst_data, dst_linesize);
-            decoded_frames_.push_back(img);
-
+            std::cout << "package decoded:" << frame_->pkt_size << std::endl;
+            // Unreference the frames to free up resources
             av_frame_unref(frame_);
-            if (frameToProcess == sw_frame_) av_frame_unref(sw_frame_);
+            av_frame_unref(sw_frame_);
         }
     }
 

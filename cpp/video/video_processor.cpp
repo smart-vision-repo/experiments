@@ -27,6 +27,16 @@ extern "C" {
 }
 #include <opencv2/opencv.hpp>
 
+VideoProcessor::VideoProcessor()
+    : decoder(AV_CODEC_ID_H264)  // 如果需要其他 codec，可以替换
+{
+    // 其他初始化逻辑
+}
+
+VideoProcessor::~VideoProcessor() {
+    // 清理逻辑（如有）
+}
+
 int VideoProcessor::process(const std::string& video_file_name, int interval) {
     const char* video_file_path = video_file_name.c_str();
     AVFormatContext* fmtCtx = nullptr;
@@ -85,6 +95,7 @@ int VideoProcessor::process(const std::string& video_file_name, int interval) {
                     total_hits += hits;
                     pool = frame_idx_in_gop - last_frame_in_gop;
                     std::vector<AVPacket*> decoding_pkts = get_packets_for_decoding(pkts, last_frame_in_gop);
+                    decoder.decode(&decoding_pkts, interval);
                     total_packages += decoding_pkts.size();
                     clear_av_packets(&decoding_pkts);
                     clear_av_packets(pkts);

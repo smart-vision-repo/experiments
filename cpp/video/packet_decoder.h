@@ -15,7 +15,7 @@ public:
     ~PacketDecoder();
 
     bool initialize();
-    bool decode(const std::vector<AVPacket*>& packets);
+    bool decode(const std::vector<AVPacket*>& packets, int interval);
     std::vector<cv::Mat> getDecodedFrames() const;
 
 private:
