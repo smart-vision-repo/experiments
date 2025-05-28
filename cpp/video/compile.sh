@@ -31,7 +31,7 @@ compile() {
 
 main() {
     git pull origin main
-    compile "skip_frame" "main.cpp video_processor.cpp packet_decoder.cpp" || exit 1
+    compile "app_video_processor" "main.cpp video_processor.cpp packet_decoder.cpp" || exit 1
 }
 
 main "$@"
