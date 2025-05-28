@@ -184,7 +184,7 @@ int PacketDecoder::initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwD
 void PacketDecoder::resetDecoder() {
     if (ctx) {
         avcodec_flush_buffers(ctx);
-        std::cout << "Decoder state reset" << std::endl;
+        // std::cout << "Decoder state reset" << std::endl;
     }
 }
 
