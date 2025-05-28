@@ -7,29 +7,27 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/hwcontext.h>
+#include <libswscale/swscale.h>
 }
 
 class PacketDecoder {
 public:
-    PacketDecoder(AVCodecID codec_id, bool prefer_hw = true);
+    PacketDecoder(AVCodecID codec_id);
     ~PacketDecoder();
 
-    bool initialize();
-    bool decode(const std::vector<AVPacket*>& packets, int interval);
+    void decode(const std::vector<AVPacket*>& pkts, int interval);
     std::vector<cv::Mat> getDecodedFrames() const;
 
 private:
-    AVCodecID codec_id_;
-    bool prefer_hw_;
-    AVCodecContext* ctx_;
-    AVBufferRef* hw_device_ctx_;
-    AVFrame* frame_;
-    AVFrame* sw_frame_;
-    struct SwsContext* sws_ctx_;
-    std::vector<cv::Mat> decoded_frames_;
+    bool initialize();
 
-    static AVPixelFormat getHWFormatCallback(AVCodecContext* ctx, const AVPixelFormat* pix_fmts);
-    void releaseResources();
+    AVCodecID codec_id;
+    const AVCodec* codec;
+    AVCodecContext* ctx;
+    AVCodecParserContext* parser;
+    AVBufferRef* hw_device_ctx;
+    SwsContext* swsCtx;
+    std::vector<cv::Mat> decoded_frames;
 };
 
 #endif // PACKET_DECODER_H
