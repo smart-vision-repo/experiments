@@ -69,13 +69,13 @@ compile() {
         "${src_files[@]}" -o "$output_name" \
         $FFMPEG_CFLAGS $OPENCV_CFLAGS \
         $FFMPEG_LIBS $OPENCV_LIBS $CUDA_FLAGS \
-        -lpthread 2> .compile_log; then
+        -lpthread 2> compile.log; then
         log_error "Compilation failed. See details below:"
-        cat .compile_log >&2
+        cat compile.log >&2
         exit 1
     fi
 
-    rm -f .compile_log
+    rm -f compile.log
     log_success "Compilation successful. Output binary: $output_name"
 }
 

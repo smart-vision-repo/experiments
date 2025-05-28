@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <numeric>
 
-PacketDecoder::PacketDecoder(std::string &video_file_name) :
+PacketDecoder::PacketDecoder(std::string video_file_name) :
     video_file_name(video_file_name),
     useHW(false),
     hwCtxRef(nullptr),

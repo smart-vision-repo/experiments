@@ -28,7 +28,7 @@ extern "C" {
 #include <opencv2/opencv.hpp>
 
 VideoProcessor::VideoProcessor(const std::string &video_file_name, int interval) :
-    decoder(AV_CODEC_ID_H264, const_cast<std::string &>(video_file_name)), // 如果需要其他 codec，可以替换
+    decoder(const_cast<std::string &>(video_file_name)), // 如果需要其他 codec，可以替换
     video_file_name(video_file_name),
     interval(interval) {
     // 其他初始化逻辑
