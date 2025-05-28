@@ -87,7 +87,6 @@ int VideoProcessor::process() {
             }
             bool is_key_frame = (packet->flags & AV_PKT_FLAG_KEY);
             if (is_key_frame) {
-                add_av_packet_to_list(&pkts, packet);
                 int last_frame_in_gop = 0;
                 if (hits > 0) {
                     skipped_frames += pool;
@@ -110,6 +109,7 @@ int VideoProcessor::process() {
                 frame_idx_in_gop = 0;
                 hits = 0;
                 gop_idx++;
+                add_av_packet_to_list(&pkts, packet);
             } else {
                 if (pkts->size() > 0) {
                     add_av_packet_to_list(&pkts, packet);
