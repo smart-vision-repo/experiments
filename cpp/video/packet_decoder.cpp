@@ -42,10 +42,10 @@ bool PacketDecoder::initialize() {
         return false;
     }
 
-    if (avcodec_open2(ctx, codec, nullptr) < 0) {
-        std::cerr << "Could not open codec." << std::endl;
-        return false;
-    }
+    // if (avcodec_open2(ctx, codec, nullptr) < 0) {
+    //     std::cerr << "Could not open codec." << std::endl;
+    //     return false;
+    // }
 
     return true;
 }
