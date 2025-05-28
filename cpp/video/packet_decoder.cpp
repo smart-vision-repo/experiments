@@ -55,7 +55,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     AVPacket *parsed_pkt = av_packet_alloc();
 
     for (AVPacket *pkt : pkts) {
-        avcodec_send_packet(ctx, nullptr); // Flush
+        avcodec_send_packet(ctx, pkt); // Flush
         while (true) {
             int ret = avcodec_receive_frame(ctx, frame);
             std::cout << ret << std::endl;
