@@ -187,6 +187,7 @@ int hwDecodedFrames = 0;
 int swDecodedFrames = 0;
 
 void processAndDecodeVideo(const std::string &videoFile, int interval) {
+
     AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, videoFile.c_str(), nullptr, nullptr) != 0) {
         std::cerr << "Error: Could not open video file " << videoFile << std::endl;

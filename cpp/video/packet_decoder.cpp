@@ -1,8 +1,29 @@
 #include "packet_decoder.h"
 #include <iostream>
+#include <string>
+#include <vector>
+#include <stdexcept>
+#include <memory>
+#include <map>
+#include <chrono>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
+#include <thread>
+#include <algorithm>
+#include <numeric>
 
-PacketDecoder::PacketDecoder(AVCodecID codec_id) :
-    codec_id(codec_id), ctx(nullptr), parser(nullptr), codec(nullptr), swsCtx(nullptr), hw_device_ctx(nullptr) {
+PacketDecoder::PacketDecoder(AVCodecID codec_id, std::string &video_file_name) :
+    video_file_name(video_file_name),
+    useHW(false),
+    hwCtxRef(nullptr),
+    codec_id(codec_id),
+    ctx(nullptr),
+    parser(nullptr),
+    codec(nullptr),
+    swsCtx(nullptr),
+    fmtCtx(nullptr),
+    hw_device_ctx(nullptr) {
     if (!initialize()) {
         throw std::runtime_error("Failed to initialize PacketDecoder.");
     }
@@ -24,33 +45,57 @@ PacketDecoder::~PacketDecoder() {
 }
 
 bool PacketDecoder::initialize() {
-    codec = avcodec_find_decoder(codec_id);
-    if (!codec) {
-        std::cerr << "Codec not found." << std::endl;
+    if (avformat_open_input(&fmtCtx, video_file_name.c_str(), nullptr, nullptr) != 0) {
+        std::cerr << "Error: Could not open video file " << video_file_name << std::endl;
+        return false;
+    }
+    if (avformat_find_stream_info(fmtCtx, nullptr) < 0) {
+        std::cerr << "Error: Could not find stream information." << std::endl;
+        avformat_close_input(&fmtCtx);
         return false;
     }
 
-    parser = av_parser_init(codec_id);
-    if (!parser) {
-        std::cerr << "Parser not found for codec." << std::endl;
-        return false;
+    int vidIdx = -1;
+
+    for (unsigned i = 0; i < fmtCtx->nb_streams; i++) {
+        if (fmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            vidIdx = i;
+            codec = avcodec_find_decoder(fmtCtx->streams[i]->codecpar->codec_id);
+            if (!codec) {
+                std::cerr << "Error: Unsupported codec!" << std::endl;
+                avformat_close_input(&fmtCtx);
+                return false;
+            }
+            break;
+        }
     }
 
     ctx = avcodec_alloc_context3(codec);
     if (!ctx) {
-        std::cerr << "Could not allocate codec context." << std::endl;
+        std::cerr << "Error: Could not allocate codec context." << std::endl;
+        avformat_close_input(&fmtCtx);
+        return false;
+    }
+    if (avcodec_parameters_to_context(ctx, fmtCtx->streams[vidIdx]->codecpar) < 0) {
+        std::cerr << "Error: Could not copy codec parameters to context." << std::endl;
+        avcodec_free_context(&ctx);
+        avformat_close_input(&fmtCtx);
         return false;
     }
 
+    ctx->thread_count = std::max(1u, std::thread::hardware_concurrency() / 2);
+    useHW = initHardwareDecoder(ctx, &hwCtxRef);
+
     if (avcodec_open2(ctx, codec, nullptr) < 0) {
-        std::cerr << "Could not open codec." << std::endl;
+        std::cerr << "Error: Could not open codec." << std::endl;
+        if (hwCtxRef) av_buffer_unref(&hwCtxRef);
+        avcodec_free_context(&ctx);
+        avformat_close_input(&fmtCtx);
         return false;
     }
 
     return true;
 }
-
-
 
 AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
     if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
@@ -136,10 +181,21 @@ int initializeHardwareDecoder(AVCodecContext *codecContext, AVBufferRef **hwDevi
 
 void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     AVFrame *frame = av_frame_alloc();
-    AVPacket *parsed_pkt = av_packet_alloc();
+    AVFrame *swFrame = nullptr;
+    struct SwsContext *swsCtx = nullptr;
+    if (!frame) {
+        std::cerr << "Error: Could not allocate frame or packet." << std::endl;
+        av_frame_free(&frame);
+        av_frame_free(&swFrame);
+        if (hwCtxRef) av_buffer_unref(&hwCtxRef);
+        avcodec_close(ctx);
+        avcodec_free_context(&ctx);
+        avformat_close_input(&fmtCtx);
+        return;
+    }
 
     for (AVPacket *pkt : pkts) {
-        avcodec_send_packet(ctx, nullptr); // Flush
+        avcodec_send_packet(ctx, pkt); // Flush
         while (true) {
             int ret = avcodec_receive_frame(ctx, frame);
             std::cout << ret << std::endl;
@@ -151,9 +207,7 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
             av_frame_unref(frame);
         }
     }
-
     av_frame_free(&frame);
-    av_packet_free(&parsed_pkt);
 }
 
 std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
