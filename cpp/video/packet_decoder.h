@@ -36,6 +36,8 @@ private:
     std::vector<cv::Mat> decoded_frames;
     bool initialize();
     int initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwDeviceCtx);
+    cv::Mat avFrameToMat(AVFrame *frame);
+    AVFrame *convertToRGB(AVFrame *frame);
 };
 
 #endif // PACKET_DECODER_H

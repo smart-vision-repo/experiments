@@ -178,39 +178,196 @@ int PacketDecoder::initHWDecoder(AVCodecContext *codecContext, AVBufferRef **hwD
     return 0;
 }
 
-void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
-    AVFrame *frame = av_frame_alloc();
-    AVFrame *swFrame = nullptr;
-    // struct SwsContext *swsCtx = nullptr;
+// 新增的辅助函数：将AVFrame转换为cv::Mat
+cv::Mat PacketDecoder::avFrameToMat(AVFrame *frame) {
     if (!frame) {
-        std::cerr << "Error: Could not allocate frame or packet." << std::endl;
-        av_frame_free(&frame);
+        std::cerr << "Error: Null AVFrame in avFrameToMat" << std::endl;
+        return cv::Mat();
+    }
+
+    AVFrame *rgbFrame = nullptr;
+
+    // 如果是硬件解码的帧，需要先转换到CPU内存
+    if (useHW && frame->format != AV_PIX_FMT_YUV420P && frame->format != AV_PIX_FMT_BGR24) {
+        AVFrame *swFrame = av_frame_alloc();
+        if (!swFrame) {
+            std::cerr << "Error: Could not allocate software frame" << std::endl;
+            return cv::Mat();
+        }
+
+        int ret = av_hwframe_transfer_data(swFrame, frame, 0);
+        if (ret < 0) {
+            std::cerr << "Error: Failed to transfer data from hardware frame to software frame" << std::endl;
+            av_frame_free(&swFrame);
+            return cv::Mat();
+        }
+
+        rgbFrame = convertToRGB(swFrame);
         av_frame_free(&swFrame);
-        if (hwCtxRef) av_buffer_unref(&hwCtxRef);
-        avcodec_close(ctx);
-        avcodec_free_context(&ctx);
-        avformat_close_input(&fmtCtx);
+    } else {
+        rgbFrame = convertToRGB(frame);
+    }
+
+    if (!rgbFrame) {
+        std::cerr << "Error: Failed to convert frame to RGB" << std::endl;
+        return cv::Mat();
+    }
+
+    // 创建cv::Mat并拷贝数据
+    cv::Mat mat(rgbFrame->height, rgbFrame->width, CV_8UC3);
+
+    // 拷贝RGB数据到Mat
+    if (rgbFrame->linesize[0] == mat.step) {
+        // 如果行步长相同，可以直接拷贝
+        memcpy(mat.data, rgbFrame->data[0], mat.total() * mat.elemSize());
+    } else {
+        // 逐行拷贝
+        for (int y = 0; y < mat.rows; ++y) {
+            memcpy(mat.ptr(y), rgbFrame->data[0] + y * rgbFrame->linesize[0], mat.cols * 3);
+        }
+    }
+
+    av_frame_free(&rgbFrame);
+    return mat;
+}
+
+// 新增的辅助函数：将帧转换为RGB格式
+AVFrame *PacketDecoder::convertToRGB(AVFrame *frame) {
+    if (!frame) return nullptr;
+
+    AVFrame *rgbFrame = av_frame_alloc();
+    if (!rgbFrame) {
+        std::cerr << "Error: Could not allocate RGB frame" << std::endl;
+        return nullptr;
+    }
+
+    rgbFrame->format = AV_PIX_FMT_BGR24; // OpenCV使用BGR格式
+    rgbFrame->width = frame->width;
+    rgbFrame->height = frame->height;
+
+    int ret = av_frame_get_buffer(rgbFrame, 32);
+    if (ret < 0) {
+        std::cerr << "Error: Could not allocate RGB frame buffer" << std::endl;
+        av_frame_free(&rgbFrame);
+        return nullptr;
+    }
+
+    // 创建或重用swsContext进行像素格式转换
+    if (!swsCtx) {
+        swsCtx = sws_getContext(
+            frame->width, frame->height, (AVPixelFormat)frame->format,
+            rgbFrame->width, rgbFrame->height, AV_PIX_FMT_BGR24,
+            SWS_BILINEAR, nullptr, nullptr, nullptr);
+
+        if (!swsCtx) {
+            std::cerr << "Error: Could not initialize swsContext" << std::endl;
+            av_frame_free(&rgbFrame);
+            return nullptr;
+        }
+    }
+
+    // 执行像素格式转换
+    sws_scale(swsCtx, frame->data, frame->linesize, 0, frame->height,
+              rgbFrame->data, rgbFrame->linesize);
+
+    return rgbFrame;
+}
+
+void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
+    if (pkts.empty()) {
+        std::cerr << "Warning: Empty packet vector" << std::endl;
         return;
     }
 
-    for (AVPacket *pkt : pkts) {
-        avcodec_send_packet(ctx, pkt); // Flush
+    AVFrame *frame = av_frame_alloc();
+    if (!frame) {
+        std::cerr << "Error: Could not allocate frame." << std::endl;
+        return;
+    }
+
+    // 清空之前的解码结果
+    decoded_frames.clear();
+
+    std::cout << "Starting to decode " << pkts.size() << " packets..." << std::endl;
+
+    for (size_t i = 0; i < pkts.size(); ++i) {
+        AVPacket *pkt = pkts[i];
+        if (!pkt) {
+            std::cerr << "Warning: Null packet at index " << i << std::endl;
+            continue;
+        }
+
+        std::cout << "Decoding packet " << i << ", size: " << pkt->size
+                  << ", flags: " << pkt->flags << std::endl;
+
+        // 发送数据包到解码器
+        int ret = avcodec_send_packet(ctx, pkt);
+        if (ret < 0) {
+            std::cerr << "Error sending packet " << i << " to decoder: " << ret << std::endl;
+            continue;
+        }
+
+        // 接收解码后的帧
         while (true) {
-            int ret = avcodec_receive_frame(ctx, frame);
-            std::cout << ret << std::endl;
-            if (ret < 0) {
-                std::cerr << "Error sending packet for decoding\n";
-                continue;
+            ret = avcodec_receive_frame(ctx, frame);
+
+            if (ret == AVERROR(EAGAIN)) {
+                // 需要更多输入数据
+                std::cout << "  Decoder needs more input data" << std::endl;
+                break;
+            } else if (ret == AVERROR_EOF) {
+                // 解码器结束
+                std::cout << "  Decoder finished" << std::endl;
+                break;
+            } else if (ret < 0) {
+                std::cerr << "  Error receiving frame: " << ret << std::endl;
+                break;
             }
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                break;
-            else if (ret < 0)
-                break;
-            decoded_frames.push_back(cv::Mat()); // Placeholder
+
+            // 成功解码一帧
+            std::cout << "  Successfully decoded frame " << decoded_frames.size()
+                      << ", format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format)
+                      << ", size: " << frame->width << "x" << frame->height << std::endl;
+
+            // 将AVFrame转换为cv::Mat
+            cv::Mat mat = avFrameToMat(frame);
+            if (!mat.empty()) {
+                decoded_frames.push_back(mat);
+                std::cout << "  Converted to cv::Mat successfully" << std::endl;
+            } else {
+                std::cerr << "  Failed to convert AVFrame to cv::Mat" << std::endl;
+            }
+
             av_frame_unref(frame);
         }
     }
+
+    // 刷新解码器以获取任何剩余的帧
+    std::cout << "Flushing decoder..." << std::endl;
+    avcodec_send_packet(ctx, nullptr); // 发送NULL包以刷新解码器
+
+    while (true) {
+        int ret = avcodec_receive_frame(ctx, frame);
+        if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+            break;
+        } else if (ret < 0) {
+            std::cerr << "Error during decoder flush: " << ret << std::endl;
+            break;
+        }
+
+        std::cout << "  Flushed frame " << decoded_frames.size() << std::endl;
+
+        cv::Mat mat = avFrameToMat(frame);
+        if (!mat.empty()) {
+            decoded_frames.push_back(mat);
+        }
+
+        av_frame_unref(frame);
+    }
+
     av_frame_free(&frame);
+
+    std::cout << "Decoding completed. Total frames decoded: " << decoded_frames.size() << std::endl;
 }
 
 std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
