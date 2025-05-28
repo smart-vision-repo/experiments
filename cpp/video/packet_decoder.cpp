@@ -55,22 +55,52 @@ void PacketDecoder::decode(const std::vector<AVPacket *> &pkts, int interval) {
     AVPacket *parsed_pkt = av_packet_alloc();
 
     for (AVPacket *pkt : pkts) {
-        avcodec_send_packet(ctx, pkt); // Flush
-        while (true) {
-            int ret = avcodec_receive_frame(ctx, frame);
-            std::cout << ret << std::endl;
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+        uint8_t *data = pkt->data;
+        int size = pkt->size;
+
+        while (size > 0) {
+            int ret = av_parser_parse2(
+                parser, ctx,
+                &parsed_pkt->data, &parsed_pkt->size,
+                data, size,
+                pkt->pts, pkt->dts, pkt->pos
+            );
+
+            if (ret < 0) {
+                std::cerr << "Parser error." << std::endl;
                 break;
-            else if (ret < 0)
-                break;
-            decoded_frames.push_back(cv::Mat()); // Placeholder
-            av_frame_unref(frame);
+            }
+
+            data += ret;
+            size -= ret;
+
+            if (parsed_pkt->size > 0) {
+                if (avcodec_send_packet(ctx, parsed_pkt) < 0) {
+                    std::cerr << "Error sending packet to decoder." << std::endl;
+                    break;
+                }
+
+                while (true) {
+                    ret = avcodec_receive_frame(ctx, frame);
+                    std::cout << ret << std::endl;
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                        break;
+                    else if (ret < 0) {
+                        std::cerr << "Error while receiving frame." << std::endl;
+                        break;
+                    }
+
+                    decoded_frames.push_back(cv::Mat()); // Replace with real frame handling
+                    av_frame_unref(frame);
+                }
+            }
         }
     }
 
     av_frame_free(&frame);
     av_packet_free(&parsed_pkt);
 }
+
 
 std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
     return decoded_frames;
