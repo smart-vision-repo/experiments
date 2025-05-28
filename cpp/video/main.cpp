@@ -29,6 +29,6 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    VideoProcessor processor;
-    return processor.process(video_file_name, interval);
+    VideoProcessor processor(video_file_name, interval);
+    return processor.process();
 }
