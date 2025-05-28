@@ -1,172 +1,142 @@
+// packet_decoder.cpp
+
+#include "packet_decoder.h"
 #include <iostream>
-#include <string>
-#include <vector>
-#include <stdexcept>
-#include <memory>
-#include <map>
-#include <chrono>
-#include <filesystem>
-#include <iomanip>
-#include <sstream>
-#include <thread>
-#include <algorithm>
-#include <numeric>
+#include <opencv2/imgproc.hpp>
+
 extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
 #include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
-#include <libavutil/hwcontext.h>
-#include <libavutil/error.h>
 #include <libswscale/swscale.h>
 }
-#include <opencv2/opencv.hpp>
-#include "packet_decoder.h"
 
-static inline std::string ffmpeg_error_string(int errnum) {
-    char errbuf[AV_ERROR_MAX_STRING_SIZE];
-    av_strerror(errnum, errbuf, sizeof(errbuf));
-    return std::string(errbuf);
+PacketDecoder::PacketDecoder(AVCodecID codec_id, bool prefer_hw)
+    : codec_id_(codec_id), prefer_hw_(prefer_hw), ctx_(nullptr),
+      hw_device_ctx_(nullptr), frame_(nullptr), sw_frame_(nullptr),
+      sws_ctx_(nullptr) {}
+
+PacketDecoder::~PacketDecoder() {
+    releaseResources();
 }
 
-class PacketDecoder {
-public:
-    PacketDecoder(AVCodecID codec_id) :
-        codec_id(codec_id) {
-    }
-    ~PacketDecoder() {
-        cleanup();
+bool PacketDecoder::initialize() {
+    const AVCodec* codec = avcodec_find_decoder(codec_id_);
+    if (!codec) {
+        std::cerr << "Codec not found." << std::endl;
+        return false;
     }
 
-    static AVPixelFormat getHWFormatCallback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
-        if (!ctx || !ctx->hw_device_ctx || !ctx->hw_device_ctx->data) {
-            std::cerr << "getHWFormatCallback: ERROR - Missing hardware device context in AVCodecContext." << std::endl;
-            return AV_PIX_FMT_NONE;
-        }
-        AVHWDeviceContext *hw_device_ctx_data = (AVHWDeviceContext *)ctx->hw_device_ctx->data;
-        const enum AVHWDeviceType active_device_type = hw_device_ctx_data->type;
-        std::cout << "getHWFormatCallback: Active HW device type is '"
-                  << av_hwdevice_get_type_name(active_device_type)
-                  << "'. Searching for compatible pixel format..." << std::endl;
-
-        for (const enum AVPixelFormat *p_fmt = pix_fmts; *p_fmt != AV_PIX_FMT_NONE; ++p_fmt) {
-            std::cout << "  - Considering format: " << av_get_pix_fmt_name(*p_fmt) << std::endl;
-            bool format_is_compatible = false;
-            switch (active_device_type) {
-            case AV_HWDEVICE_TYPE_CUDA:
-                if (*p_fmt == AV_PIX_FMT_CUDA) format_is_compatible = true;
-                break;
-            case AV_HWDEVICE_TYPE_VAAPI:
-                if (*p_fmt == AV_PIX_FMT_VAAPI) format_is_compatible = true;
-                break;
-            case AV_HWDEVICE_TYPE_VDPAU:
-                if (*p_fmt == AV_PIX_FMT_VDPAU) format_is_compatible = true;
-                break;
-            case AV_HWDEVICE_TYPE_QSV:
-                if (*p_fmt == AV_PIX_FMT_QSV) format_is_compatible = true;
-                break;
-            case AV_HWDEVICE_TYPE_D3D11VA:
-                if (*p_fmt == AV_PIX_FMT_D3D11) format_is_compatible = true;
-                break;
-            case AV_HWDEVICE_TYPE_VIDEOTOOLBOX:
-                if (*p_fmt == AV_PIX_FMT_VIDEOTOOLBOX) format_is_compatible = true;
-                break;
-            default:
-                std::cerr << "getHWFormatCallback: Unhandled or unknown active_device_type: "
-                          << av_hwdevice_get_type_name(active_device_type) << std::endl;
-                break;
-            }
-            if (format_is_compatible) {
-                std::cout << "Hardware pixel format selected: " << av_get_pix_fmt_name(*p_fmt)
-                          << " (Compatible with " << av_hwdevice_get_type_name(active_device_type) << ")" << std::endl;
-                return *p_fmt;
-            }
-        }
-        std::cerr << "getHWFormatCallback: Failed to find a suitable HW pixel format for device type: "
-                  << av_hwdevice_get_type_name(active_device_type) << std::endl;
-        std::cerr << "  Available formats in pix_fmts were: ";
-        for (const enum AVPixelFormat *p_fmt = pix_fmts; *p_fmt != AV_PIX_FMT_NONE; ++p_fmt) {
-            std::cerr << av_get_pix_fmt_name(*p_fmt) << " ";
-        }
-        std::cerr << std::endl;
-        return AV_PIX_FMT_NONE;
+    ctx_ = avcodec_alloc_context3(codec);
+    if (!ctx_) {
+        std::cerr << "Failed to allocate codec context." << std::endl;
+        return false;
     }
 
-    bool initialize() {
-        codec = avcodec_find_decoder_by_name("h264_cuvid");
-        if (codec) {
-            ctx = avcodec_alloc_context3(codec);
-            if (av_hwdevice_ctx_create(&hw_device_ctx, AV_HWDEVICE_TYPE_CUDA, nullptr, nullptr, 0) == 0) {
-                ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
-                ctx->get_format = getHWFormatCallback;
-                use_hw = true;
-            } else {
-                avcodec_free_context(&ctx);
-                codec = nullptr;
-            }
-        }
-        if (!codec) {
-            codec = avcodec_find_decoder(codec_id);
-            if (!codec) return false;
-            ctx = avcodec_alloc_context3(codec);
-            use_hw = false;
-        }
-        return avcodec_open2(ctx, codec, nullptr) >= 0;
-    }
-
-    bool decode(std::vector<AVPacket *> *pkts) {
-        frame = av_frame_alloc();
-        sw_frame = av_frame_alloc();
-        if (!frame || !sw_frame) return false;
-
-        for (AVPacket *pkt : *pkts) {
-            if (avcodec_send_packet(ctx, pkt) < 0) continue;
-            while (true) {
-                int ret = avcodec_receive_frame(ctx, frame);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                    break;
-                else if (ret < 0)
-                    break;
-
-                AVFrame *f = frame;
-                if (use_hw && frame->format == ctx->pix_fmt) {
-                    if (av_hwframe_transfer_data(sw_frame, frame, 0) == 0) {
-                        f = sw_frame;
-                    } else {
-                        std::cerr << "Failed to transfer HW frame to SW frame." << std::endl;
-                        continue;
+    if (prefer_hw_) {
+        if (av_hwdevice_ctx_create(&hw_device_ctx_, AV_HWDEVICE_TYPE_CUDA, nullptr, nullptr, 0) >= 0) {
+            ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
+            ctx_->get_format = [](AVCodecContext* ctx, const AVPixelFormat* pix_fmts) {
+                for (const AVPixelFormat* p = pix_fmts; *p != -1; p++) {
+                    if (*p == AV_PIX_FMT_CUDA) {
+                        return *p;
                     }
                 }
-                std::cout << "Decoded frame: " << f->width << "x" << f->height << std::endl;
-                av_frame_unref(frame);
-                if (use_hw) av_frame_unref(sw_frame);
-            }
+                return pix_fmts[0];
+            };
+        } else {
+            std::cerr << "HW decoding not available, falling back to SW." << std::endl;
         }
+    }
 
-        avcodec_send_packet(ctx, nullptr);
+    if (avcodec_open2(ctx_, codec, nullptr) < 0) {
+        std::cerr << "Failed to open codec." << std::endl;
+        return false;
+    }
+
+    frame_ = av_frame_alloc();
+    sw_frame_ = av_frame_alloc();
+    return frame_ && sw_frame_;
+}
+
+bool PacketDecoder::decode(const std::vector<AVPacket*>& packets) {
+    decoded_frames_.clear();
+
+    for (AVPacket* pkt : packets) {
+        if (avcodec_send_packet(ctx_, pkt) < 0) continue;
+
         while (true) {
-            int ret = avcodec_receive_frame(ctx, frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-            av_frame_unref(frame);
-            if (use_hw) av_frame_unref(sw_frame);
+            int ret = avcodec_receive_frame(ctx_, frame_);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                break;
+            else if (ret < 0)
+                return false;
+
+            AVFrame* frameToProcess = frame_;
+            if (prefer_hw_ && frame_->format == ctx_->pix_fmt) {
+                if (av_hwframe_transfer_data(sw_frame_, frame_, 0) < 0) {
+                    av_frame_unref(frame_);
+                    continue;
+                }
+                sw_frame_->width = frame_->width;
+                sw_frame_->height = frame_->height;
+                frameToProcess = sw_frame_;
+            }
+
+            if (!sws_ctx_) {
+                sws_ctx_ = sws_getContext(
+                    frameToProcess->width, frameToProcess->height, (AVPixelFormat)frameToProcess->format,
+                    frameToProcess->width, frameToProcess->height, AV_PIX_FMT_BGR24,
+                    SWS_BICUBIC, nullptr, nullptr, nullptr);
+            }
+
+            cv::Mat img(frameToProcess->height, frameToProcess->width, CV_8UC3);
+            uint8_t* dst_data[1] = { img.data };
+            int dst_linesize[1] = { (int)img.step[0] };
+            sws_scale(sws_ctx_, frameToProcess->data, frameToProcess->linesize,
+                      0, frameToProcess->height, dst_data, dst_linesize);
+            decoded_frames_.push_back(img);
+
+            av_frame_unref(frame_);
+            if (frameToProcess == sw_frame_) av_frame_unref(sw_frame_);
         }
-        return true;
     }
 
-private:
-    void cleanup() {
-        if (ctx) avcodec_free_context(&ctx);
-        if (frame) av_frame_free(&frame);
-        if (sw_frame) av_frame_free(&sw_frame);
-        if (hw_device_ctx) av_buffer_unref(&hw_device_ctx);
+    avcodec_send_packet(ctx_, nullptr);
+    while (true) {
+        int ret = avcodec_receive_frame(ctx_, frame_);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+        av_frame_unref(frame_);
     }
 
-    AVCodecID codec_id;
-    AVCodec *codec = nullptr;
-    AVCodecContext *ctx = nullptr;
-    AVBufferRef *hw_device_ctx = nullptr;
-    AVFrame *frame = nullptr;
-    AVFrame *sw_frame = nullptr;
-    bool use_hw = false;
-};
+    return true;
+}
+
+std::vector<cv::Mat> PacketDecoder::getDecodedFrames() const {
+    return decoded_frames_;
+}
+
+void PacketDecoder::releaseResources() {
+    if (ctx_) {
+        avcodec_free_context(&ctx_);
+    }
+    if (hw_device_ctx_) {
+        av_buffer_unref(&hw_device_ctx_);
+    }
+    if (frame_) {
+        av_frame_free(&frame_);
+    }
+    if (sw_frame_) {
+        av_frame_free(&sw_frame_);
+    }
+    if (sws_ctx_) {
+        sws_freeContext(sws_ctx_);
+    }
+}
+
+AVPixelFormat PacketDecoder::getHWFormatCallback(AVCodecContext* ctx, const AVPixelFormat* pix_fmts) {
+    for (const AVPixelFormat* p = pix_fmts; *p != -1; p++) {
+        if (*p == AV_PIX_FMT_CUDA) {
+            return *p;
+        }
+    }
+    return pix_fmts[0];
+}
