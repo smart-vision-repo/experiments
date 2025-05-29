@@ -150,6 +150,7 @@ int VideoProcessor::process() {
     std::cout << "-------------------" << std::endl;
     float percentage = (frame_idx > 0) ? (decoded_frames * 100.0f / frame_idx) : 0.0f;
     std::cout << "total gop: " << gop_idx << std::endl
+              << "interval: " << interval << std::endl
               << "total_packages: " << total_packages << std::endl
               << "decoded frames: " << decoded_frames << std::endl
               << "skipped frames: " << skipped_frames << std::endl
