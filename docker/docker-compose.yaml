@@ -34,6 +34,8 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=R8!kLp2#zQw9@xVt
       - MYSQL_DATABASE=smartvision
+      - MYSQL_USER=smartvision
+      - MYSQL_PASSWORD=DvZ26&v%4UGEY&aR
     volumes:
       - mysql_data:/var/lib/mysql
 
