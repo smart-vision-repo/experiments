@@ -9,7 +9,7 @@ services:
       - "9001:9001"
     environment:
       - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=admin123@sm123
+      - MINIO_ROOT_PASSWORD=Qw7!pL9z@eX2#vRt
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -23,7 +23,7 @@ services:
       - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin@sm123
+      - RABBITMQ_DEFAULT_PASS=G7!kLp2#zQw9@xVt
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
   mysql:
@@ -32,7 +32,7 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=root@sm123
+      - MYSQL_ROOT_PASSWORD=R8!kLp2#zQw9@xVt
       - MYSQL_DATABASE=smartvision
     volumes:
       - mysql_data:/var/lib/mysql
