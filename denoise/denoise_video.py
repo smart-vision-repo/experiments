@@ -1,5 +1,5 @@
 # denoise_video_optimized.py
-# 优化点：使用多GPU + autocast 混合精度 + 推理部分支持 batch
+# 优化点：使用多GPU + autocast 混合精度（修复 DataParallel 多进程冲突）
 
 import cv2
 import torch
@@ -52,8 +52,8 @@ def reader_process(input_path, frame_queue, frame_count):
     frame_queue.put(None)
 
 # --- Worker with Model ---
-def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level):
-    device = torch.device(f'cuda:{gpu_id}')
+def worker_process(frame_queue, result_queue, model_path, noise_level):
+    device = torch.device('cuda:0')
     from model_architecture import SwinIR
     model = SwinIR(
         upscale=1, img_size=(128, 128), window_size=8, img_range=1.,
@@ -77,7 +77,6 @@ def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level):
         input_tiles = torch.stack([
             torch.from_numpy(t.transpose(2, 0, 1)).float() for t in tiles
         ])
-        input_tiles = input_tiles.unsqueeze(1) if len(input_tiles.shape) == 3 else input_tiles
         input_tiles = input_tiles.to(device)
 
         with torch.no_grad():
@@ -117,7 +116,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True)
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--noise_level', type=int, default=25)
-    parser.add_argument('--gpus', type=int, default=1)
     args = parser.parse_args()
 
     cap = cv2.VideoCapture(args.input)
@@ -133,16 +131,12 @@ if __name__ == '__main__':
     reader = mp.Process(target=reader_process, args=(args.input, frame_queue, frame_count))
     reader.start()
 
-    workers = []
-    for i in range(args.gpus):
-        p = mp.Process(target=worker_process, args=(frame_queue, result_queue, args.model_path, i, args.noise_level))
-        p.start()
-        workers.append(p)
+    worker = mp.Process(target=worker_process, args=(frame_queue, result_queue, args.model_path, args.noise_level))
+    worker.start()
 
     writer = mp.Process(target=writer_process, args=(args.output, result_queue, frame_count, fps, (width, height)))
     writer.start()
 
     reader.join()
-    for p in workers:
-        p.join()
+    worker.join()
     writer.join()
