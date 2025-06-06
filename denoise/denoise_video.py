@@ -1,7 +1,8 @@
 # -----------------------------------------------------------------------------
-# denoise_video_pipeline.py
+# denoise_video_pipeline_fixed.py
 #
 # 描述:
+#   修复了多进程中 'tqdm' 未定义的NameError。
 #   采用多进程并行流水线架构，最大化CPU与GPU的并行度，
 #   实现对视频降噪任务的极致性能优化。
 # -----------------------------------------------------------------------------
@@ -11,7 +12,7 @@ import numpy as np
 import argparse
 import time
 import multiprocessing as mp
-from queue import Empty, Full
+from queue import Empty
 
 # --- Helper Functions (No changes) ---
 def tile_image(img, tile_size=128, overlap=32):
@@ -45,20 +46,15 @@ def untile_image(tiles, original_size, padded_size, tile_size=128, overlap=32):
 
 # --- Process Functions ---
 def reader_process(input_path, frame_queue, frame_count):
-    """读取视频帧并放入队列"""
     cap = cv2.VideoCapture(input_path)
     for i in range(frame_count):
         ret, frame = cap.read()
-        if not ret:
-            break
-        # 将帧和它的序号放入队列，等待处理
+        if not ret: break
         frame_queue.put((i, frame))
-    # 放入结束信号
     frame_queue.put(None)
     cap.release()
 
 def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level, batch_size):
-    """从队列获取帧，在GPU上处理，并将结果放入另一个队列"""
     device = torch.device(f'cuda:{gpu_id}')
     try:
         from model_architecture import SwinIR as ModelClass
@@ -81,7 +77,6 @@ def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level, b
     with torch.no_grad():
         while True:
             try:
-                # 从队列获取任务
                 task = frame_queue.get(timeout=10)
                 if task is None:
                     result_queue.put(None)
@@ -105,8 +100,6 @@ def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level, b
 
                 denoised_frame_rgb = untile_image(denoised_tiles, original_size, padded_size, tile_size=PATCH_SIZE, overlap=32)
                 denoised_frame_bgr = cv2.cvtColor(denoised_frame_rgb, cv2.COLOR_RGB2BGR)
-                
-                # 将结果放入结果队列
                 result_queue.put((idx, denoised_frame_bgr))
 
             except Empty:
@@ -115,6 +108,8 @@ def worker_process(frame_queue, result_queue, model_path, gpu_id, noise_level, b
     
 def writer_process(result_queue, output_path, fps, width, height, frame_count):
     """从结果队列获取帧并按顺序写入视频"""
+    from tqdm import tqdm  # <--- 在这里添加导入
+    
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
@@ -125,13 +120,11 @@ def writer_process(result_queue, output_path, fps, width, height, frame_count):
         while next_frame_idx < frame_count:
             try:
                 task = result_queue.get(timeout=20)
-                if task is None:
-                    break
+                if task is None: break
                 
                 idx, frame = task
                 results_buffer[idx] = frame
                 
-                # 按顺序写入
                 while next_frame_idx in results_buffer:
                     out.write(results_buffer.pop(next_frame_idx))
                     next_frame_idx += 1
@@ -154,22 +147,17 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=64, help="一次性送入GPU处理的分块数量。默认为64。")
     args = parser.parse_args()
 
-    # 获取视频元数据
     cap = cv2.VideoCapture(args.input)
-    if not cap.isOpened():
-        raise ValueError("Cannot open input video")
+    if not cap.isOpened(): raise ValueError("Cannot open input video")
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    # 创建进程间通信的队列
-    # 队列大小限制了内存占用，防止Reader进程读取过快
     frame_queue = mp.Queue(maxsize=30)
     result_queue = mp.Queue(maxsize=30)
 
-    # 创建并启动进程
     reader = mp.Process(target=reader_process, args=(args.input, frame_queue, frame_count))
     worker = mp.Process(target=worker_process, args=(frame_queue, result_queue, args.model, args.gpu, args.noise, args.batch_size))
     writer = mp.Process(target=writer_process, args=(result_queue, args.output, fps, width, height, frame_count))
@@ -181,7 +169,6 @@ if __name__ == '__main__':
     worker.start()
     writer.start()
 
-    # 等待所有进程结束
     reader.join()
     worker.join()
     writer.join()
