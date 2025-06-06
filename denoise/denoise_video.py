@@ -144,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, required=True, help="降噪后视频的保存路径。")
     parser.add_argument('--model', type=str, required=True, help="预训练的SwinIR (.pth) 模型权重文件路径。")
     parser.add_argument('--gpu', type=int, default=0, help="要使用的GPU的ID。默认为0。")
-    parser.add__argument('--noise', type=int, default=25, help="模型对应的噪声水平(15, 25, 50)。默认为25。")
+    parser.add_argument('--noise', type=int, default=25, help="模型对应的噪声水平(15, 25, 50)。默认为25。")
     parser.add_argument('--batch_size', type=int, default=64, help="一次性送入GPU处理的分块数量。默认为64。")
     args = parser.parse_args()
     denoise_video_debug(args.input, args.output, args.model, args.gpu, args.noise, args.batch_size)
