@@ -1,16 +1,11 @@
-# -----------------------------------------------------------------------------
-# denoise_video_4gpu_pipeline_final.py
-#
-# 描述:
-#   最终修复版 - 修复了多进程中 'NUM_WORKERS' 未定义的NameError。
-# -----------------------------------------------------------------------------
+# denoise_video_debug.py
+# (这是一个单GPU的脚本，专门用于调试黑屏问题)
 import cv2
 import torch
 import numpy as np
 import argparse
+from tqdm import tqdm
 import time
-import multiprocessing as mp
-from queue import Empty
 
 # --- Helper Functions (No changes) ---
 def tile_image(img, tile_size=128, overlap=32):
@@ -42,23 +37,22 @@ def untile_image(tiles, original_size, padded_size, tile_size=128, overlap=32):
     output_img_padded /= np.maximum(count_map, 1)
     return np.clip(output_img_padded[0:h, 0:w, :], 0, 255).astype(np.uint8)
 
-# --- Process Functions ---
-def reader_process(input_path, task_queue, frame_count, num_workers):
-    """(生产者) 读取视频帧并放入任务队列"""
-    cap = cv2.VideoCapture(input_path)
-    for i in range(frame_count):
-        ret, frame = cap.read()
-        if not ret: break
-        task_queue.put((i, frame))
-    # 在任务的末尾为每个worker放置一个None作为结束信号
-    for _ in range(num_workers):
-        task_queue.put(None)
-    cap.release()
-    print("[Reader] All frames have been sent. Exiting.")
 
-def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, batch_size):
-    """(处理者) 从队列获取帧，在指定GPU上处理，并将结果放入结果队列"""
-    device = torch.device(f'cuda:{gpu_id}')
+def denoise_video_debug(input_path, output_path, model_path, gpu_id, noise_level, batch_size):
+    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
+    print(f"使用的设备: {device}")
+
+    # ... (视频I/O设置部分与之前相同) ...
+    cap = cv2.VideoCapture(input_path)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    print(f"视频信息: {width}x{height} @ {fps:.2f} FPS, 共 {frame_count} 帧。")
+
+    # ... (模型加载部分与之前相同) ...
     try:
         from model_architecture import SwinIR as ModelClass
         PATCH_SIZE = 128
@@ -73,129 +67,84 @@ def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, ba
         model.load_state_dict(pretrained_model[param_key], strict=True)
         model.to(device)
         model.eval()
+        print("SwinIR模型已成功加载到GPU。")
     except Exception as e:
-        print(f"[Worker-{gpu_id}] Model loading failed: {e}")
+        print(f"加载模型时发生错误: {e}")
         return
 
-    print(f"[Worker-{gpu_id}] Ready and waiting for frames.")
+    print(f"开始调试处理，只处理前5帧...")
     with torch.no_grad():
-        while True:
-            try:
-                task = task_queue.get()
-                if task is None:
-                    result_queue.put(None)
-                    print(f"[Worker-{gpu_id}] Received termination signal. Exiting.")
-                    break
-                
-                idx, frame = task
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                tiles, original_size, padded_size = tile_image(frame_rgb, tile_size=PATCH_SIZE, overlap=32)
-                denoised_tiles = []
-                
-                for i in range(0, len(tiles), batch_size):
-                    batch_tiles = tiles[i:i+batch_size]
-                    batch_tensors_list = [torch.from_numpy(tile).permute(2, 0, 1).float() / 255.0 for tile in batch_tiles]
-                    batch_tensors = torch.stack(batch_tensors_list).to(device)
-                    
-                    with torch.cuda.amp.autocast():
-                        denoised_batch = model(batch_tensors)
-                    
-                    denoised_batch_np = (denoised_batch.cpu().clamp(0, 1) * 255.0).permute(0, 2, 3, 1).numpy()
-                    denoised_tiles.extend([denoised_batch_np[j] for j in range(denoised_batch_np.shape[0])])
+        for frame_idx in range(5): # 只处理5帧用于调试
+            ret, frame = cap.read()
+            if not ret: break
 
-                denoised_frame_rgb = untile_image(denoised_tiles, original_size, padded_size, tile_size=PATCH_SIZE, overlap=32)
-                denoised_frame_bgr = cv2.cvtColor(denoised_frame_rgb, cv2.COLOR_RGB2BGR)
-                result_queue.put((idx, denoised_frame_bgr))
+            print(f"\n--- 正在处理第 {frame_idx + 1} 帧 ---")
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            tiles, original_size, padded_size = tile_image(frame_rgb, tile_size=PATCH_SIZE, overlap=32)
+            denoised_tiles = []
+            
+            # 只处理第一批小块用于调试
+            batch_tiles = tiles[0:batch_size]
+            batch_tensors_list = [torch.from_numpy(tile).permute(2, 0, 1).float() / 255.0 for tile in batch_tiles]
+            batch_tensors = torch.stack(batch_tensors_list).to(device)
+            
+            with torch.cuda.amp.autocast():
+                denoised_batch = model(batch_tensors)
+            
+            # ======================= DEBUG PROBE 1 =======================
+            # 检查模型直接输出的数值范围
+            print(f"Debug Probe 1: 模型输出张量的 Min={denoised_batch.min():.6f}, Max={denoised_batch.max():.6f}, Mean={denoised_batch.mean():.6f}")
+            # =============================================================
 
-            except Empty:
-                continue
+            denoised_batch_np = (denoised_batch.cpu().clamp(0, 1) * 255.0).permute(0, 2, 3, 1).numpy()
+            
+            # ======================= DEBUG PROBE 2 =======================
+            # 保存第一个降噪后的小块图像，看看它是不是黑的
+            debug_tile_to_save = denoised_batch_np[0].astype(np.uint8)
+            debug_tile_to_save_bgr = cv2.cvtColor(debug_tile_to_save, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(f"debug_tile_frame_{frame_idx + 1}.png", debug_tile_to_save_bgr)
+            print(f"Debug Probe 2: 已保存第一个降噪小块到 'debug_tile_frame_{frame_idx + 1}.png'")
+            # =============================================================
 
-def writer_process(result_queue, output_path, fps, width, height, frame_count, num_workers): # <-- FIX 1: Add num_workers argument
-    """(消费者) 从结果队列获取帧并按顺序写入视频"""
-    from tqdm import tqdm
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
-    results_buffer = {}
-    next_frame_idx = 0
-    workers_done = 0
-    
-    with tqdm(total=frame_count, desc="写入进度", unit="帧") as pbar:
-        while workers_done < num_workers: # <-- FIX 1: Use the argument
-            try:
-                task = result_queue.get(timeout=30)
-                if task is None:
-                    workers_done += 1
-                    continue
-                
-                idx, frame = task
-                results_buffer[idx] = frame
-                
-                while next_frame_idx in results_buffer:
-                    out.write(results_buffer.pop(next_frame_idx))
-                    next_frame_idx += 1
-                    pbar.update(1)
+            # 为了快速调试，我们这里不再完整处理，直接跳出
+            # 如果需要完整检查，请注释掉下面的 break
+            # break 
 
-            except Empty:
-                print("[Writer] Result queue timed out. Breaking loop.")
-                break
-    print("[Writer] Writing process finished.")
+            # (下面是完整的处理逻辑，暂时可以不用看)
+            denoised_tiles.extend([denoised_batch_np[j] for j in range(denoised_batch_np.shape[0])])
+            # 处理剩余的批次
+            for i in range(batch_size, len(tiles), batch_size):
+                batch_tiles = tiles[i:i+batch_size]
+                batch_tensors_list = [torch.from_numpy(tile).permute(2, 0, 1).float() / 255.0 for tile in batch_tiles]
+                batch_tensors = torch.stack(batch_tensors_list).to(device)
+                with torch.cuda.amp.autocast():
+                    denoised_batch = model(batch_tensors)
+                denoised_batch_np = (denoised_batch.cpu().clamp(0, 1) * 255.0).permute(0, 2, 3, 1).numpy()
+                denoised_tiles.extend([denoised_batch_np[j] for j in range(denoised_batch_np.shape[0])])
+
+            denoised_frame_rgb = untile_image(denoised_tiles, original_size, padded_size, tile_size=PATCH_SIZE, overlap=32)
+            denoised_frame_bgr = cv2.cvtColor(denoised_frame_rgb, cv2.COLOR_RGB2BGR)
+            
+            # ======================= DEBUG PROBE 3 =======================
+            cv2.imwrite(f"debug_full_frame_{frame_idx + 1}.png", denoised_frame_bgr)
+            print(f"Debug Probe 3: 已保存完整降噪帧到 'debug_full_frame_{frame_idx + 1}.png'")
+            # =============================================================
+            
+            out.write(denoised_frame_bgr)
+
+    cap.release()
     out.release()
+    cv2.destroyAllWindows()
+    print("\n调试脚本运行结束。")
 
-# --- Main Execution Block ---
 if __name__ == '__main__':
-    NUM_WORKERS = 4
-    mp.set_start_method('spawn', force=True)
-    parser = argparse.ArgumentParser(description="使用4-GPU并行流水线对视频进行极致性能降噪")
+    # ... (命令行参数部分与之前相同) ...
+    parser = argparse.ArgumentParser(description="用于调试黑屏问题的单GPU降噪脚本")
     parser.add_argument('--input', type=str, required=True, help="输入的带噪声视频文件路径。")
     parser.add_argument('--output', type=str, required=True, help="降噪后视频的保存路径。")
     parser.add_argument('--model', type=str, required=True, help="预训练的SwinIR (.pth) 模型权重文件路径。")
-    parser.add_argument('--noise', type=int, default=25, help="模型对应的噪声水平(15, 25, 50)。默认为25。")
-    parser.add_argument('--batch_size', type=int, default=64, help="每个GPU一次处理的分块数量。默认为64。")
+    parser.add_argument('--gpu', type=int, default=0, help="要使用的GPU的ID。默认为0。")
+    parser.add__argument('--noise', type=int, default=25, help="模型对应的噪声水平(15, 25, 50)。默认为25。")
+    parser.add_argument('--batch_size', type=int, default=64, help="一次性送入GPU处理的分块数量。默认为64。")
     args = parser.parse_args()
-
-    cap = cv2.VideoCapture(args.input)
-    if not cap.isOpened(): raise ValueError("Cannot open input video")
-    
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.release()
-
-    task_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
-    result_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
-
-    reader = mp.Process(target=reader_process, args=(args.input, task_queue, frame_count, NUM_WORKERS))
-    
-    workers = []
-    for i in range(NUM_WORKERS):
-        worker = mp.Process(target=worker_process, args=(task_queue, result_queue, args.model, i, args.noise, args.batch_size))
-        workers.append(worker)
-
-    writer = mp.Process(target=writer_process, args=(result_queue, args.output, fps, width, height, frame_count, NUM_WORKERS)) # <-- FIX 2: Pass NUM_WORKERS
-    
-    print(f"启动1个Reader, {NUM_WORKERS}个Workers, 1个Writer...")
-    start_time = time.time()
-    
-    reader.start()
-    for worker in workers:
-        worker.start()
-    writer.start()
-
-    reader.join()
-    print("Reader process has finished.")
-    for worker in workers:
-        worker.join()
-    print("All worker processes have finished.")
-    writer.join()
-    print("Writer process has finished.")
-    
-    end_time = time.time()
-    total_time = end_time - start_time
-
-    print("-" * 40)
-    if total_time > 0:
-        print(f"全部处理完成！总耗时: {total_time:.2f}秒, 平均速度: {frame_count/total_time:.2f} 帧/秒。")
-    print(f"降噪后的视频已保存到: '{args.output}'")
-    print("-" * 40)
+    denoise_video_debug(args.input, args.output, args.model, args.gpu, args.noise, args.batch_size)
