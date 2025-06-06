@@ -1,90 +1,208 @@
-import os
+# -----------------------------------------------------------------------------
+# denoise_video_4gpu_pipeline.py
+#
+# 描述:
+#   最终版 - 采用多进程并行流水线架构，利用全部4块GPU进行并行推理，
+#   实现对视频降噪任务的极致性能优化。
+# -----------------------------------------------------------------------------
 import cv2
 import torch
 import numpy as np
-from tqdm import tqdm
-from torch import nn
-from torchvision.transforms.functional import to_tensor, to_pil_image
-from torch.cuda.amp import autocast
-from concurrent.futures import ThreadPoolExecutor
-from model_architecture import SwinIR
+import argparse
+import time
+import multiprocessing as mp
+from queue import Empty
 
-# ------------------------ Configuration ------------------------
-input_video_path = "input.mp4"
-output_video_path = "output_denoised.mp4"
-model_path = "005_colorDN_DFWB_s128w8_SwinIR-M_noise25.pth"
-device = "cuda"
-batch_size = 8
-num_gpus = torch.cuda.device_count()
-num_workers = 4
-tile_pad = 0
-half_precision = True
-# ---------------------------------------------------------------
+# --- Helper Functions (No changes needed) ---
+def tile_image(img, tile_size=128, overlap=32):
+    h, w, c = img.shape
+    stride = tile_size - overlap
+    pad_h = (stride - (h - overlap) % stride) % stride
+    pad_w = (stride - (w - overlap) % stride) % stride
+    img_padded = np.pad(img, ((0, pad_h), (0, pad_w), (0, 0)), mode='reflect')
+    h_pad, w_pad, _ = img_padded.shape
+    tiles = []
+    for i in range(0, h_pad - tile_size + 1, stride):
+        for j in range(0, w_pad - tile_size + 1, stride):
+            tiles.append(img_padded[i:i+tile_size, j:j+tile_size, :])
+    return tiles, (h, w), (h_pad, w_pad)
 
-# ------------------------ Model Setup --------------------------
-model = SwinIR(upscale=1, in_chans=3, img_size=128, window_size=8, img_range=1., 
-               depths=[6, 6, 6, 6, 6, 6], embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6], 
-               mlp_ratio=2, upsampler='', resi_connection='1conv')
-pretrained_model = torch.load(model_path)
-model.load_state_dict(pretrained_model, strict=True)
-model.eval()
+def untile_image(tiles, original_size, padded_size, tile_size=128, overlap=32):
+    h, w = original_size
+    h_pad, w_pad = padded_size
+    c = tiles[0].shape[2]
+    stride = tile_size - overlap
+    output_img_padded = np.zeros((h_pad, w_pad, c), dtype=np.float32)
+    count_map = np.zeros((h_pad, w_pad, c), dtype=np.float32)
+    idx = 0
+    for i in range(0, h_pad - tile_size + 1, stride):
+        for j in range(0, w_pad - tile_size + 1, stride):
+            output_img_padded[i:i+tile_size, j:j+tile_size, :] += tiles[idx]
+            count_map[i:i+tile_size, j:j+tile_size, :] += 1
+            idx += 1
+    output_img_padded /= np.maximum(count_map, 1)
+    return np.clip(output_img_padded[0:h, 0:w, :], 0, 255).astype(np.uint8)
 
-if num_gpus > 1:
-    model = nn.DataParallel(model)
-model = model.to(device)
-# ---------------------------------------------------------------
-
-def read_video_frames(path):
-    cap = cv2.VideoCapture(path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frames = []
-    while True:
+# --- Process Functions ---
+def reader_process(input_path, task_queue, frame_count):
+    """(生产者) 读取视频帧并放入任务队列"""
+    cap = cv2.VideoCapture(input_path)
+    for i in range(frame_count):
         ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        if not ret: break
+        task_queue.put((i, frame))
+    # 在任务的末尾为每个worker放置一个None作为结束信号
+    for _ in range(NUM_WORKERS):
+        task_queue.put(None)
     cap.release()
-    return frames, fps
+    print("[Reader] All frames have been sent. Exiting.")
 
-def write_video(frames, fps, path):
-    h, w, _ = frames[0].shape
-    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-    for frame in frames:
-        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        writer.write(bgr)
-    writer.release()
+def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, batch_size):
+    """(处理者) 从队列获取帧，在指定GPU上处理，并将结果放入结果队列"""
+    device = torch.device(f'cuda:{gpu_id}')
+    try:
+        from model_architecture import SwinIR as ModelClass
+        # 在独立的进程中导入tqdm
+        from tqdm import tqdm
+        PATCH_SIZE = 128
+        model = ModelClass(upscale=1, img_size=(PATCH_SIZE, PATCH_SIZE),
+                           window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6],
+                           embed_dim=180, num_heads=[6, 6, 6, 6, 6, 6],
+                           mlp_ratio=2, upsampler='', resi_connection='1conv',
+                           task='color_dn', noise=noise_level)
+        pretrained_model = torch.load(model_path, map_location='cpu')
+        param_key = 'params'
+        if param_key not in pretrained_model: param_key = next(iter(pretrained_model))
+        model.load_state_dict(pretrained_model[param_key], strict=True)
+        model.to(device)
+        model.eval()
+    except Exception as e:
+        print(f"[Worker-{gpu_id}] Model loading failed: {e}")
+        return
 
-def preprocess(frames):
-    return torch.stack([to_tensor(f).unsqueeze(0) for f in frames]).squeeze(1)
-
-def denoise_batch(batch):
+    print(f"[Worker-{gpu_id}] Ready and waiting for frames.")
     with torch.no_grad():
-        batch = batch.to(device)
-        with autocast(enabled=half_precision):
-            output = model(batch)
-        return output.clamp_(0, 1).cpu()
+        while True:
+            try:
+                task = task_queue.get()
+                if task is None: # 收到结束信号
+                    result_queue.put(None) # 将结束信号传递给writer
+                    print(f"[Worker-{gpu_id}] Received termination signal. Exiting.")
+                    break
+                
+                idx, frame = task
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                tiles, original_size, padded_size = tile_image(frame_rgb, tile_size=PATCH_SIZE, overlap=32)
+                denoised_tiles = []
+                
+                for i in range(0, len(tiles), batch_size):
+                    batch_tiles = tiles[i:i+batch_size]
+                    batch_tensors_list = [torch.from_numpy(tile).permute(2, 0, 1).float() / 255.0 for tile in batch_tiles]
+                    batch_tensors = torch.stack(batch_tensors_list).to(device)
+                    
+                    with torch.cuda.amp.autocast():
+                        denoised_batch = model(batch_tensors)
+                    
+                    denoised_batch_np = (denoised_batch.cpu().clamp(0, 1) * 255.0).permute(0, 2, 3, 1).numpy()
+                    denoised_tiles.extend([denoised_batch_np[j] for j in range(denoised_batch_np.shape[0])])
 
-def process_all_frames(frames):
-    processed = []
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        for i in tqdm(range(0, len(frames), batch_size), desc="Denoising"):
-            batch_frames = frames[i:i+batch_size]
-            batch_tensor = preprocess(batch_frames)
-            output_tensor = denoise_batch(batch_tensor)
-            outputs = [to_pil_image(t) for t in output_tensor]
-            results = [np.array(img) for img in outputs]
-            processed.extend(results)
-    return processed
+                denoised_frame_rgb = untile_image(denoised_tiles, original_size, padded_size, tile_size=PATCH_SIZE, overlap=32)
+                denoised_frame_bgr = cv2.cvtColor(denoised_frame_rgb, cv2.COLOR_RGB2BGR)
+                result_queue.put((idx, denoised_frame_bgr))
 
-def main():
-    assert Path(input_video_path).exists(), f"Input video {input_video_path} not found."
-    print(f"Reading video: {input_video_path}")
-    frames, fps = read_video_frames(input_video_path)
-    print(f"Total {len(frames)} frames. FPS: {fps}")
-    results = process_all_frames(frames)
-    print(f"Writing output video: {output_video_path}")
-    write_video(results, fps, output_video_path)
-    print("Done.")
+            except Empty:
+                continue
 
-if __name__ == "__main__":
-    main()
+def writer_process(result_queue, output_path, fps, width, height, frame_count):
+    """(消费者) 从结果队列获取帧并按顺序写入视频"""
+    from tqdm import tqdm
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    results_buffer = {}
+    next_frame_idx = 0
+    workers_done = 0
+    
+    with tqdm(total=frame_count, desc="写入进度", unit="帧") as pbar:
+        while workers_done < NUM_WORKERS:
+            try:
+                task = result_queue.get(timeout=30)
+                if task is None:
+                    workers_done += 1
+                    continue
+                
+                idx, frame = task
+                results_buffer[idx] = frame
+                
+                while next_frame_idx in results_buffer:
+                    out.write(results_buffer.pop(next_frame_idx))
+                    next_frame_idx += 1
+                    pbar.update(1)
+
+            except Empty:
+                print("[Writer] Result queue timed out. Breaking loop.")
+                break
+    print("[Writer] Writing process finished.")
+    out.release()
+
+# --- Main Execution Block ---
+if __name__ == '__main__':
+    # 全局变量，定义工作进程数量
+    NUM_WORKERS = 4
+
+    # 在Linux上, 'fork'是默认值, 但'spawn'更安全稳定，能避免一些CUDA的奇怪问题
+    mp.set_start_method('spawn', force=True)
+    parser = argparse.ArgumentParser(description="使用4-GPU并行流水线对视频进行极致性能降噪")
+    parser.add_argument('--input', type=str, required=True, help="输入的带噪声视频文件路径。")
+    parser.add_argument('--output', type=str, required=True, help="降噪后视频的保存路径。")
+    parser.add_argument('--model', type=str, required=True, help="预训练的SwinIR (.pth) 模型权重文件路径。")
+    parser.add_argument('--noise', type=int, default=25, help="模型对应的噪声水平(15, 25, 50)。默认为25。")
+    parser.add_argument('--batch_size', type=int, default=64, help="每个GPU一次处理的分块数量。默认为64。")
+    args = parser.parse_args()
+
+    cap = cv2.VideoCapture(args.input)
+    if not cap.isOpened(): raise ValueError("Cannot open input video")
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+
+    # 队列大小限制了内存中缓存的帧数，防止内存爆炸
+    task_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
+    result_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
+
+    # 创建并启动进程
+    reader = mp.Process(target=reader_process, args=(args.input, task_queue, frame_count))
+    
+    workers = []
+    for i in range(NUM_WORKERS):
+        worker = mp.Process(target=worker_process, args=(task_queue, result_queue, args.model, i, args.noise, args.batch_size))
+        workers.append(worker)
+
+    writer = mp.Process(target=writer_process, args=(result_queue, args.output, fps, width, height, frame_count))
+    
+    print(f"启动1个Reader, {NUM_WORKERS}个Workers, 1个Writer...")
+    start_time = time.time()
+    
+    reader.start()
+    for worker in workers:
+        worker.start()
+    writer.start()
+
+    reader.join()
+    print("Reader process has finished.")
+    for worker in workers:
+        worker.join()
+    print("All worker processes have finished.")
+    writer.join()
+    print("Writer process has finished.")
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    print("-" * 40)
+    if total_time > 0:
+        print(f"全部处理完成！总耗时: {total_time:.2f}秒, 平均速度: {frame_count/total_time:.2f} 帧/秒。")
+    print(f"降噪后的视频已保存到: '{args.output}'")
+    print("-" * 40)
