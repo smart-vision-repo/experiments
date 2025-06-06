@@ -2,8 +2,7 @@
 # denoise_video_4gpu_pipeline.py
 #
 # 描述:
-#   最终版 - 采用多进程并行流水线架构，利用全部4块GPU进行并行推理，
-#   实现对视频降噪任务的极致性能优化。
+#   最终版 - 修复了OpenCV属性名称的typo，使用4-GPU并行流水线。
 # -----------------------------------------------------------------------------
 import cv2
 import torch
@@ -13,7 +12,7 @@ import time
 import multiprocessing as mp
 from queue import Empty
 
-# --- Helper Functions (No changes needed) ---
+# --- Helper Functions (No changes) ---
 def tile_image(img, tile_size=128, overlap=32):
     h, w, c = img.shape
     stride = tile_size - overlap
@@ -51,7 +50,6 @@ def reader_process(input_path, task_queue, frame_count):
         ret, frame = cap.read()
         if not ret: break
         task_queue.put((i, frame))
-    # 在任务的末尾为每个worker放置一个None作为结束信号
     for _ in range(NUM_WORKERS):
         task_queue.put(None)
     cap.release()
@@ -62,8 +60,6 @@ def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, ba
     device = torch.device(f'cuda:{gpu_id}')
     try:
         from model_architecture import SwinIR as ModelClass
-        # 在独立的进程中导入tqdm
-        from tqdm import tqdm
         PATCH_SIZE = 128
         model = ModelClass(upscale=1, img_size=(PATCH_SIZE, PATCH_SIZE),
                            window_size=8, img_range=1., depths=[6, 6, 6, 6, 6, 6],
@@ -85,8 +81,8 @@ def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, ba
         while True:
             try:
                 task = task_queue.get()
-                if task is None: # 收到结束信号
-                    result_queue.put(None) # 将结束信号传递给writer
+                if task is None:
+                    result_queue.put(None)
                     print(f"[Worker-{gpu_id}] Received termination signal. Exiting.")
                     break
                 
@@ -147,10 +143,7 @@ def writer_process(result_queue, output_path, fps, width, height, frame_count):
 
 # --- Main Execution Block ---
 if __name__ == '__main__':
-    # 全局变量，定义工作进程数量
     NUM_WORKERS = 4
-
-    # 在Linux上, 'fork'是默认值, 但'spawn'更安全稳定，能避免一些CUDA的奇怪问题
     mp.set_start_method('spawn', force=True)
     parser = argparse.ArgumentParser(description="使用4-GPU并行流水线对视频进行极致性能降噪")
     parser.add_argument('--input', type=str, required=True, help="输入的带噪声视频文件路径。")
@@ -162,17 +155,19 @@ if __name__ == '__main__':
 
     cap = cv2.VideoCapture(args.input)
     if not cap.isOpened(): raise ValueError("Cannot open input video")
+    
+    # --- THIS IS THE FIX ---
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_HEIGHT))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) # Corrected from CAP_PROP_HEIGHT
+    # -----------------------
+
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    # 队列大小限制了内存中缓存的帧数，防止内存爆炸
     task_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
     result_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
 
-    # 创建并启动进程
     reader = mp.Process(target=reader_process, args=(args.input, task_queue, frame_count))
     
     workers = []
