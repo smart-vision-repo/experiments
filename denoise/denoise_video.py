@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------------------
-# denoise_video_4gpu_pipeline.py
+# denoise_video_4gpu_pipeline_final.py
 #
 # 描述:
-#   最终版 - 修复了OpenCV属性名称的typo，使用4-GPU并行流水线。
+#   最终修复版 - 修复了多进程中 'NUM_WORKERS' 未定义的NameError。
 # -----------------------------------------------------------------------------
 import cv2
 import torch
@@ -43,14 +43,15 @@ def untile_image(tiles, original_size, padded_size, tile_size=128, overlap=32):
     return np.clip(output_img_padded[0:h, 0:w, :], 0, 255).astype(np.uint8)
 
 # --- Process Functions ---
-def reader_process(input_path, task_queue, frame_count):
+def reader_process(input_path, task_queue, frame_count, num_workers):
     """(生产者) 读取视频帧并放入任务队列"""
     cap = cv2.VideoCapture(input_path)
     for i in range(frame_count):
         ret, frame = cap.read()
         if not ret: break
         task_queue.put((i, frame))
-    for _ in range(NUM_WORKERS):
+    # 在任务的末尾为每个worker放置一个None作为结束信号
+    for _ in range(num_workers):
         task_queue.put(None)
     cap.release()
     print("[Reader] All frames have been sent. Exiting.")
@@ -109,7 +110,7 @@ def worker_process(task_queue, result_queue, model_path, gpu_id, noise_level, ba
             except Empty:
                 continue
 
-def writer_process(result_queue, output_path, fps, width, height, frame_count):
+def writer_process(result_queue, output_path, fps, width, height, frame_count, num_workers): # <-- FIX 1: Add num_workers argument
     """(消费者) 从结果队列获取帧并按顺序写入视频"""
     from tqdm import tqdm
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -120,7 +121,7 @@ def writer_process(result_queue, output_path, fps, width, height, frame_count):
     workers_done = 0
     
     with tqdm(total=frame_count, desc="写入进度", unit="帧") as pbar:
-        while workers_done < NUM_WORKERS:
+        while workers_done < num_workers: # <-- FIX 1: Use the argument
             try:
                 task = result_queue.get(timeout=30)
                 if task is None:
@@ -156,11 +157,8 @@ if __name__ == '__main__':
     cap = cv2.VideoCapture(args.input)
     if not cap.isOpened(): raise ValueError("Cannot open input video")
     
-    # --- THIS IS THE FIX ---
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) # Corrected from CAP_PROP_HEIGHT
-    # -----------------------
-
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
@@ -168,14 +166,14 @@ if __name__ == '__main__':
     task_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
     result_queue = mp.Queue(maxsize=NUM_WORKERS * 4)
 
-    reader = mp.Process(target=reader_process, args=(args.input, task_queue, frame_count))
+    reader = mp.Process(target=reader_process, args=(args.input, task_queue, frame_count, NUM_WORKERS))
     
     workers = []
     for i in range(NUM_WORKERS):
         worker = mp.Process(target=worker_process, args=(task_queue, result_queue, args.model, i, args.noise, args.batch_size))
         workers.append(worker)
 
-    writer = mp.Process(target=writer_process, args=(result_queue, args.output, fps, width, height, frame_count))
+    writer = mp.Process(target=writer_process, args=(result_queue, args.output, fps, width, height, frame_count, NUM_WORKERS)) # <-- FIX 2: Pass NUM_WORKERS
     
     print(f"启动1个Reader, {NUM_WORKERS}个Workers, 1个Writer...")
     start_time = time.time()
