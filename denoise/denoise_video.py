@@ -108,7 +108,7 @@ def writer_process(output_path, result_queue, frame_count, fps, resolution):
         idx, frame = item
         results[idx] = frame
         while received in results:
-                        writer.write(results.pop(received))
+            writer.write(results.pop(received))
             received += 1
             pbar.update(1)
         pbar.close()
