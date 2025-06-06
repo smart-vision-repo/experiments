@@ -100,7 +100,7 @@ def writer_process(output_path, result_queue, frame_count, fps, resolution):
     writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, resolution)
     results = {}
     received = 0
-        pbar = tqdm(total=frame_count, desc="Writing frames", unit="frame")
+    pbar = tqdm(total=frame_count, desc="Writing frames", unit="frame")
     while received < frame_count:
         item = result_queue.get()
         if item is None:
