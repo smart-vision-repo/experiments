@@ -41,13 +41,18 @@ def untile_image(tiles, original_size, padded_size, tile_size=128, overlap=32):
     return np.clip(output_img_padded[0:h, 0:w, :], 0, 255).astype(np.uint8)
 
 # --- Frame Reader ---
+from tqdm import tqdm
+
 def reader_process(input_path, frame_queue, frame_count):
     cap = cv2.VideoCapture(input_path)
+        pbar = tqdm(total=frame_count, desc="Reading frames", unit="frame")
     for i in range(frame_count):
         ret, frame = cap.read()
         if not ret:
             break
-        frame_queue.put((i, frame))
+                frame_queue.put((i, frame))
+                    pbar.update(1)
+        pbar.close()
     cap.release()
     frame_queue.put(None)
 
@@ -67,6 +72,7 @@ def worker_process(frame_queue, result_queue, model_path, noise_level):
     model = torch.nn.DataParallel(model).to(device)
     model.eval()
 
+        pbar = tqdm(desc="Processing frames", unit="frame")
     while True:
         item = frame_queue.get()
         if item is None:
@@ -89,8 +95,10 @@ def worker_process(frame_queue, result_queue, model_path, noise_level):
             for t in output_tiles
         ]
         result = untile_image(output_tiles, orig_size, pad_size)
-        result_queue.put((idx, result))
+                result_queue.put((idx, result))
+        pbar.update(1)
 
+        pbar.close()
     result_queue.put(None)
 
 # --- Writer ---
@@ -100,7 +108,7 @@ def writer_process(output_path, result_queue, frame_count, fps, resolution):
     writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, resolution)
     results = {}
     received = 0
-    pbar = tqdm(total=frame_count, desc="Writing frames", unit="frame")
+            pbar = tqdm(total=frame_count, desc="Writing frames", unit="frame")
     while received < frame_count:
         item = result_queue.get()
         if item is None:
@@ -108,10 +116,10 @@ def writer_process(output_path, result_queue, frame_count, fps, resolution):
         idx, frame = item
         results[idx] = frame
         while received in results:
-            writer.write(results.pop(received))
+                        writer.write(results.pop(received))
             received += 1
             pbar.update(1)
-        pbar.close()
+            pbar.close()
     writer.release()
 
 # --- Main ---
