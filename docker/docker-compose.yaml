@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  minio:
+  smart-vision-minio:
     image: minio/minio
     container_name: smart-vision-minio
     ports:
@@ -13,9 +13,10 @@ services:
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
+    networks:
+      - smart-vision-network
 
-
-  rabbitmq:
+  smart-vision-rabbitmq:
     image: rabbitmq:3-management
     container_name: smart-vision-rabbitmq
     ports:
@@ -26,7 +27,11 @@ services:
       - RABBITMQ_DEFAULT_PASS=G7!kLp2#zQw9@xVt
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-  mysql:
+
+    networks:
+      - smart-vision-network
+
+  smart-vision-mysql:
     image: mysql:8.0
     container_name: smart-vision-mysql
     ports:
@@ -38,8 +43,11 @@ services:
       - MYSQL_PASSWORD=DvZ26&v%4UGEY&aR
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - smart-vision-network
 
-  nginx:
+
+  smart-vision-nginx:
     image: nginx:latest
     container_name: smart-vision-nginx
     ports:
@@ -48,6 +56,9 @@ services:
     volumes:
       - nginx_conf:/etc/nginx/conf.d
       - nginx_logs:/var/log/nginx
+    networks:
+      - smart-vision-network
+
 
 volumes:
   rabbitmq_data: 
@@ -84,3 +95,11 @@ volumes:
       type: none
       device: /opt/docker/nginx/logs
       o: bind
+# 网络定义部分
+networks:
+  smart-vision-network:  # 自定义网络名称
+    driver: bridge  # 网络驱动类型
+    ipam:  # IP地址管理配置
+      config:
+        - subnet: 172.26.0.0/16  # 子网设置
+          gateway: 172.26.0.1    # 网关
